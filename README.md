@@ -10,8 +10,6 @@
 
 ## 프로젝트 소개
 
-## 프로젝트 소개
-
 Windows MFC와 Thread Pool을 기반으로 구현한 영상 처리 데모 프로그램입니다.
 
 UI는 MFC를 기반으로 구성했으며, 기본 컨트롤을 상속한 커스텀 컨트롤을 적용했습니다. 고정 크기의 Thread Pool을 구현하고 다수의 이미지 처리 작업을 Task Queue에 등록하여 Worker Thread에서 병렬로 처리할 수 있도록 구성했습니다.
@@ -30,43 +28,88 @@ OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명�
 * Thread Pool의 Worker Thread 수에 따른 처리 성능 변화
 * OpenCV 내부 스레드와 Worker Thread 간 스레드 경합에 따른 성능 변화
 
-
 ---
 
 ## 주요 기능
 
 ### Image Processing
 
-- OpenCV 기반 이미지 전처리
-- CLAHE 기반 부분 영역 대비 보정
-- 경계선 검출
-- 모서리 검출
-- 이미지 기울기 보정
-- 문서 이미지 전처리 결과 확인
+* OpenCV 기반 이미지 전처리
+* CLAHE 기반 국부 대비 보정
+* 노이즈 및 그림자 제거
+* 경계선 검출
+* 문서 모서리 검출
+* 원근 및 기울기 보정
+* 적응형 이진화 및 문자 경계 강조
 
 ### Multi-thread Processing
 
-- Thread Pool 기반 병렬 작업 처리
-- Task Queue 기반 작업 등록
-- Worker Thread를 통한 다중 이미지 병렬 처리
-- 별도의 Single Thread 지원
-- Thread Pool 실행 상태 및 종료 제어
-
-### Performance Test
-
-- 순차 처리와 Thread Pool 처리 시간 비교
-- Worker Thread 수 변경에 따른 성능 비교
-- OpenCV 내부 병렬 처리와 외부 Thread Pool 간 경합 영향 측정
-- 작업별 처리 시간 로그 저장
+* Thread Pool 기반 병렬 작업 처리
+* Task Queue 기반 작업 등록 및 분배
+* Worker Thread를 통한 다중 이미지 병렬 처리
+* Thread Pool과 독립적으로 동작하는 Single Thread 지원
+* Thread Pool 실행 상태 및 종료 제어
 
 ### MFC UI
 
-- MFC Dialog 기반 사용자 인터페이스
-- 기본 컨트롤 상속을 이용한 커스텀 UI 컨트롤
-- Windows Message 기반 Worker Thread / UI Thread 통신
-- Worker Thread의 UI 직접 접근 방지
-- 영상 처리 중 UI 응답성 유지
-- 처리 결과 및 작업 시간 로그 출력
+* MFC Dialog 기반 사용자 인터페이스
+* 기본 컨트롤 상속을 이용한 커스텀 UI 컨트롤
+* Windows Message 기반 Worker Thread / UI Thread 통신
+* Worker Thread의 UI 컨트롤 직접 접근 방지
+* 영상 처리 중 UI 응답성 유지
+* 처리 결과 영상 확인
+* 작업 시간 로그 출력 및 파일 저장
+
+### Performance Test
+
+* 순차 처리와 Thread Pool 기반 병렬 처리 시간 비교
+* Worker Thread 수 변경에 따른 처리 성능 비교
+* OpenCV 내부 스레드와 Thread Pool Worker Thread 간 자원 경합 영향 측정
+* 작업별 처리 시간 측정 및 로그 기록
+
+---
+
+## 테스트 방법
+
+### Thread Pool 처리 시간 비교
+
+다수의 대용량 이미지를 이용하여 순차 처리와 Thread Pool 기반 병렬 처리의 실행 시간을 비교할 수 있습니다.
+
+테스트 이미지는 다음 폴더에 있습니다.
+
+`test-image/image-big`
+
+해당 폴더의 `copy.bat` 파일을 실행하면 테스트 이미지를 복제하여 총 100장의 이미지로 구성할 수 있습니다.
+
+프로그램 화면의 작업 설정 항목을 변경하면서 처리 시간을 비교할 수 있습니다. 스레드풀 옵션을 선택하면 스레드풀에서 사용하는 스레드 수량을 선택할 수 있습니다.
+
+* 순차처리 옵션 : 스레드풀과 독립적으로 동작하는 싱글 스레드로 처리
+* 스레드풀 옵션 : 스레드풀 기반 병렬 처리
+* 스레드 개수   : 스레드풀의 Worker Thread 수량
+* OpenCV 내부 스레드 사용 : OpenCV 내부 스레드 사용 여부
+
+CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용하는 경우 Context Switching과 CPU 자원 경합으로 인해 성능 향상이 제한되거나 처리 시간이 오히려 증가할 수 있습니다.
+
+또한 OpenCV 내부 스레드와 Thread Pool의 Worker Thread가 동시에 동작하면 과도한 병렬화로 인해 CPU 자원 경합이 발생할 수 있습니다. 다만 현재 테스트 환경에서는 OpenCV 내부 스레드 사용 여부에 따른 성능 차이가 크지 않은 결과도 확인할 수 있습니다.
+
+프로그램에서는 이러한 병렬화 조건에 따른 성능 변화를 실제 처리 시간으로 비교할 수 있도록 구성했습니다.
+
+### 영상 전처리 결과 확인
+
+전처리 결과 확인에는 다음 폴더의 이미지를 사용할 수 있습니다.
+
+`test-image/image-id-card`
+
+해당 폴더에는 테스트용 가상 신분증 이미지가 포함되어 있습니다.
+
+다음과 같은 처리 결과를 확인할 수 있습니다.
+
+* 노이즈 및 그림자 제거
+* 명암 및 대비 보정
+* 문서 경계선 및 모서리 검출
+* 원근 및 기울기 보정
+* 문자 경계 강조 및 이진화
+* 최종 문서 이미지 전처리 결과
 
 ---
 
@@ -83,47 +126,6 @@ OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명�
 Microsoft Visual C++ Redistributable x64:
 
 https://aka.ms/vc14/vc_redist.x64.exe
-
----
-
-## 테스트 방법
-
-### Thread Pool 처리 시간 비교
-
-다수의 대용량 이미지를 이용하여 순차 처리와 Thread Pool 기반 병렬 처리의 실행 시간을 비교할 수 있습니다.
-
-테스트 이미지는 다음 폴더에 있습니다.
-
-`test-image/image-big`
-
-해당 폴더의 `copy.bat` 파일을 실행하면 테스트 이미지를 복제하여 총 100장의 이미지로 구성할 수 있습니다.
-
-다음 항목을 변경하면서 처리 시간을 비교할 수 있습니다.
-
-- Sequential Processing
-- Thread Pool Processing
-- Worker Thread Count
-- OpenCV Internal Thread Count
-
-CPU의 논리 프로세서 수보다 많은 Worker Thread를 사용하거나 OpenCV 내부 스레드와 Thread Pool의 Worker Thread를 동시에 많이 사용하는 경우에는 Context Switching 및 CPU 자원 경합으로 인해 성능 향상이 제한되거나 오히려 처리 시간이 증가할 수 있습니다.
-
-프로그램에서는 이러한 변화를 실제 처리 시간으로 확인할 수 있도록 구성했습니다.
-
-### 영상 전처리 결과 확인
-
-전처리 결과 확인에는 다음 폴더의 이미지를 사용할 수 있습니다.
-
-`test-image/image-id-card`
-
-해당 폴더에는 테스트용 가상 신분증 이미지가 포함되어 있습니다.
-
-다음과 같은 처리 결과를 확인할 수 있습니다.
-
-- 명암 및 대비 보정
-- 경계선 검출
-- 모서리 검출
-- 기울기 보정
-- 문서 이미지 전처리 결과
 
 ---
 
