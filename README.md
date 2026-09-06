@@ -1,7 +1,7 @@
 # MFC OpenCV Thread Pool Image Processing Application
 
 <p align="center">
-  <img src="screenshot/screenshot01.jpg" width="900">
+  <img src="screenshot/screenshot02.jpg" width="900">
 </p>
 
 <p align="center">
