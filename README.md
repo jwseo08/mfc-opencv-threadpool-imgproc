@@ -28,7 +28,6 @@ OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명�
 * Thread Pool의 Worker Thread 수에 따른 처리 성능 변화
 * OpenCV 내부 스레드와 Worker Thread 간 스레드 경합에 따른 성능 변화
 
----
 
 ## 주요 기능
 
@@ -67,7 +66,6 @@ OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명�
 * OpenCV 내부 스레드와 Thread Pool Worker Thread 간 자원 경합 영향 측정
 * 작업별 처리 시간 측정 및 로그 기록
 
----
 
 ## 테스트 방법
 
@@ -111,7 +109,54 @@ CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용
 * 문자 경계 강조 및 이진화
 * 최종 문서 이미지 전처리 결과
 
----
+
+## 프로그램 구조
+
+### Thread Pool 구조
+
+작업 요청마다 새로운 스레드를 생성하지 않고, 미리 생성한 Worker Thread를 재사용하는 고정 크기 Thread Pool을 구현했습니다.
+
+이미지 처리 작업은 Task Queue에 등록되며, 대기 중인 Worker Thread는 `std::condition_variable`을 통해 새로운 작업을 전달받아 처리합니다.
+
+```text
+AddTask()
+    │
+    ▼
+Task Queue
+    │
+    │ notify_one()
+    ▼
+Worker Thread
+    │
+    ▼
+Image Processing
+```
+
+이를 통해 반복적인 스레드 생성 비용을 줄이고, 다수의 이미지 처리 작업을 병렬로 수행하도록 구성했습니다.
+
+Thread Pool과 별도로 하나의 독립적인 작업을 실행할 수 있는 Single Thread도 지원하며, Thread Pool 작업과 Single Thread 작업을 독립적으로 관리합니다.
+
+### UI Thread 연동
+
+영상 처리를 담당하는 Worker Thread는 MFC 컨트롤에 직접 접근하지 않고 `PostMessage()`를 이용해 작업 상태와 결과를 UI Thread에 전달합니다.
+
+```text
+Worker Thread
+     │
+     │ PostMessage()
+     ▼
+Windows Message Queue
+     │
+     ▼
+UI Thread
+     │
+     ▼
+MFC Control Update
+```
+
+이를 통해 영상 처리 중에도 UI 응답성을 유지하고, 작업 진행 상태와 결과를 UI Thread에서 안전하게 갱신하도록 구성했습니다.
+
+
 
 ## 실행 파일 다운로드
 
@@ -127,7 +172,6 @@ Microsoft Visual C++ Redistributable x64:
 
 https://aka.ms/vc14/vc_redist.x64.exe
 
----
 
 ## Thread Pool 설계
 
@@ -154,7 +198,6 @@ Result / Notification
 
 이 구조를 통해 반복적인 스레드 생성 및 종료 비용을 줄이고, 다수의 영상 처리 작업을 제한된 수의 Worker Thread에서 처리할 수 있도록 했습니다.
 
----
 
 ## Worker Thread 구성
 
@@ -177,7 +220,6 @@ Thread Pool과 별도로 하나의 독립적인 작업을 실행하기 위한 Th
 
 Thread Pool 작업과 단일 작업을 분리하여 독립적으로 관리할 수 있도록 구성했습니다.
 
----
 
 ## UI Thread 연동 구조
 
@@ -205,7 +247,6 @@ MFC Control Update
 - 장시간 작업으로 인한 UI 정지
 - UI Thread와 Worker Thread 간 잘못된 동시 접근
 
----
 
 ## 주요 처리 흐름
 
@@ -234,7 +275,6 @@ MFC UI Result Display
 Log Output
 ```
 
----
 
 ## 성능 측정 목적
 
@@ -252,7 +292,6 @@ Log Output
 
 따라서 실행 환경에 따라 적절한 Worker Thread 수와 OpenCV 내부 스레드 수를 선택하는 것이 중요하며, 프로그램에서 이를 직접 비교할 수 있도록 구성했습니다.
 
----
 
 ## 빌드 환경
 
@@ -261,7 +300,6 @@ Log Output
 - C++17
 - OpenCV 4.10.0
 
----
 
 ## 프로젝트 구성
 
@@ -289,7 +327,6 @@ Task Queue에 새로운 작업이 등록되었을 때 대기 중인 Worker Threa
 
 Worker Thread에서 발생한 작업 상태와 처리 결과를 Windows Message를 이용하여 UI Thread에 전달합니다.
 
----
 
 ## 사용 기술
 
@@ -305,7 +342,6 @@ Worker Thread에서 발생한 작업 상태와 처리 결과를 Windows Message�
 - Multi-thread / Thread Pool
 - Image Processing
 
----
 
 ## 참고
 
