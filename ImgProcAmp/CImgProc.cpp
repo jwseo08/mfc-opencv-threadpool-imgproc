@@ -246,7 +246,7 @@ bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const 
 	// 감마값 적용으로 전체 밝기 보정 - look up table 적용
 	cv::LUT(matClahe, matLut, matDst);
 	
-	if (!matDst.empty()) true;
+	if (!matDst.empty()) return true;
 	else return false;
 }
 
