@@ -13,6 +13,8 @@
 #define new DEBUG_NEW
 #endif
 
+//#define _CONSOLE
+
 
 // CImgProcAmpApp
 
@@ -42,13 +44,14 @@ CImgProcAmpApp theApp;
 
 BOOL CImgProcAmpApp::InitInstance()
 {
+#ifdef _CONSOLE
 	AllocConsole();
 	FILE* fp;
 
 	// std::cout을 콘솔로 리디렉션
 	freopen_s(&fp, "CONOUT$", "w", stdout);
 	std::cout.clear();  // std::cout 상태 초기화
-
+#endif
 
 	// Windows XP에서는 InitCommonControlsEx()를 필요로 합니다.
 	// 사용하도록 지정하는 경우, Windows XP 상에서 반드시 InitCommonControlsEx()가 필요합니다.
@@ -133,6 +136,10 @@ int CImgProcAmpApp::ExitInstance()
 		GdiplusEnd(&m_gdiplusToken);
 		m_gdiplusToken = 0;
 	}
+
+#ifdef _CONSOLE
+	FreeConsole();
+#endif
 
 	return CWinApp::ExitInstance();
 }
