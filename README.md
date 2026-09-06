@@ -14,7 +14,7 @@ Windows MFC와 Thread Pool을 기반으로 구현한 영상 처리 데모 프로
 
 UI는 MFC를 기반으로 구성했으며, 기본 컨트롤을 상속한 커스텀 컨트롤을 적용했습니다. 고정 크기의 Thread Pool을 구현하고 다수의 이미지 처리 작업을 Task Queue에 등록하여 Worker Thread에서 병렬로 처리할 수 있도록 구성했습니다.
 
-OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명암 및 밝기 보정, 문서 경계와 모서리 검출, 기울기 보정, 이진화 등의 전처리를 수행합니다. 이를 통해 문서 이미지의 가독성을 높이고 후속 인식 처리에 적합한 형태로 보정합니다.
+OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 대비 및 밝기 보정, 문서 경계와 모서리 검출, 기울기 보정, 이진화 등의 전처리를 수행합니다. 이를 통해 문서 이미지의 가독성을 높이고 후속 인식 처리에 적합한 형태로 보정합니다.
 
 이미지 처리 작업은 UI Thread와 분리된 Worker Thread에서 수행하며, Worker Thread가 MFC UI 컨트롤에 직접 접근하지 않도록 Windows Message 기반의 구조를 사용했습니다.
 
@@ -67,49 +67,6 @@ OpenCV를 이용하여 입력 이미지에 노이즈 및 그림자 제거, 명�
 * 작업별 처리 시간 측정 및 로그 기록
 
 
-## 테스트 방법
-
-### Thread Pool 처리 시간 비교
-
-다수의 대용량 이미지를 이용하여 순차 처리와 Thread Pool 기반 병렬 처리의 실행 시간을 비교할 수 있습니다.
-
-테스트 이미지는 다음 폴더에 있습니다.
-
-`test-image/image-big`
-
-해당 폴더의 `copy.bat` 파일을 실행하면 테스트 이미지를 복제하여 총 100장의 이미지로 구성할 수 있습니다.
-
-프로그램 화면의 작업 설정 항목을 변경하면서 처리 시간을 비교할 수 있습니다. 스레드풀 옵션을 선택하면 스레드풀에서 사용하는 스레드 수량을 선택할 수 있습니다.
-
-* 순차처리 옵션 : 스레드풀과 독립적으로 동작하는 싱글 스레드로 처리
-* 스레드풀 옵션 : 스레드풀 기반 병렬 처리
-* 스레드 개수   : 스레드풀의 Worker Thread 수량
-* OpenCV 내부 스레드 사용 : OpenCV 내부 스레드 사용 여부
-
-CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용하는 경우 Context Switching과 CPU 자원 경합으로 인해 성능 향상이 제한되거나 처리 시간이 오히려 증가할 수 있습니다.
-
-또한 OpenCV 내부 스레드와 Thread Pool의 Worker Thread가 동시에 동작하면 과도한 병렬화로 인해 CPU 자원 경합이 발생할 수 있습니다. 다만 현재 테스트 환경에서는 OpenCV 내부 스레드 사용 여부에 따른 성능 차이가 크지 않은 결과도 확인할 수 있습니다.
-
-프로그램에서는 이러한 병렬화 조건에 따른 성능 변화를 실제 처리 시간으로 비교할 수 있도록 구성했습니다.
-
-### 영상 전처리 결과 확인
-
-전처리 결과 확인에는 다음 폴더의 이미지를 사용할 수 있습니다.
-
-`test-image/image-id-card`
-
-해당 폴더에는 테스트용 가상 신분증 이미지가 포함되어 있습니다.
-
-다음과 같은 처리 결과를 확인할 수 있습니다.
-
-* 노이즈 및 그림자 제거
-* 명암 및 대비 보정
-* 문서 경계선 및 모서리 검출
-* 원근 및 기울기 보정
-* 문자 경계 강조 및 이진화
-* 최종 문서 이미지 전처리 결과
-
-
 ## 프로그램 구조
 
 ### Thread Pool 구조
@@ -132,7 +89,7 @@ Worker Thread
 Image Processing
 ```
 
-이를 통해 반복적인 스레드 생성 비용을 줄이고, 다수의 이미지 처리 작업을 병렬로 수행하도록 구성했습니다.
+이를 통해서 반복적인 스레드 생성 비용을 줄이고, 다수의 이미지 처리 작업을 병렬로 수행하도록 구성했습니다.
 
 Thread Pool과 별도로 하나의 독립적인 작업을 실행할 수 있는 Single Thread도 지원하며, Thread Pool 작업과 Single Thread 작업을 독립적으로 관리합니다.
 
@@ -154,143 +111,55 @@ UI Thread
 MFC Control Update
 ```
 
-이를 통해 영상 처리 중에도 UI 응답성을 유지하고, 작업 진행 상태와 결과를 UI Thread에서 안전하게 갱신하도록 구성했습니다.
+이를 통해서 영상 처리 중에도 UI 응답성을 유지하고, 작업 진행 상태와 결과를 UI Thread에서 안전하게 갱신하도록 구성했습니다.
 
 
+## 테스트 방법
 
-## 실행 파일 다운로드
+### Thread Pool 처리 시간 비교
 
-별도의 빌드 과정 없이 프로그램을 실행하려면 배포 파일을 다운로드한 후 압축을 해제하십시오.
+다수의 대용량 이미지를 이용하여 순차 처리와 Thread Pool 기반 병렬 처리의 실행 시간을 비교할 수 있습니다.
 
-압축 해제 후 다음 실행 파일을 실행합니다.
+테스트 이미지는 다음 폴더에 있습니다.
 
-`ImgProcAmp.exe`
+`test-image/image-big`
 
-실행 환경에 따라 Microsoft Visual C++ Redistributable 설치가 필요할 수 있습니다.
+해당 폴더의 `copy.bat` 파일을 실행하면 테스트 이미지를 복제하여 총 100장의 이미지로 구성할 수 있습니다.
 
-Microsoft Visual C++ Redistributable x64:
+프로그램 화면의 작업 설정 항목을 변경하면서 처리 시간을 비교할 수 있습니다. 스레드풀 옵션을 선택하면 스레드풀의 Worker Thread 수를 지정할 수 있습니다.
 
-https://aka.ms/vc14/vc_redist.x64.exe
+* 순차처리 옵션 : 별도의 싱글 스레드에서 이미지 작업을 하나씩 순차 처리
+* 스레드풀 옵션 : 스레드풀 기반 병렬 처리
+* 스레드 개수   : 스레드풀에서 사용할 Worker Thread 수
+* OpenCV 내부 스레드 사용 : OpenCV 내부 스레드 사용 여부
 
+CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용하는 경우 Context Switching과 CPU 자원 경합으로 인해 성능 향상이 제한되거나 처리 시간이 오히려 증가할 수 있습니다.
 
-## Thread Pool 설계
+또한 OpenCV 내부 스레드와 Thread Pool의 Worker Thread가 동시에 동작하면 과도한 병렬화로 인해 CPU 자원 경합이 발생할 수 있습니다. 다만 현재 테스트 환경에서는 OpenCV 내부 스레드 사용 여부에 따른 성능 차이가 크지 않은 결과도 확인할 수 있습니다.
 
-Thread Pool은 작업 요청이 들어올 때마다 새로운 스레드를 생성하지 않고, 프로그램 시작 시 생성된 Worker Thread를 재사용하도록 구성했습니다.
+프로그램에서는 이러한 병렬화 조건에 따른 성능 변화를 실제 처리 시간으로 비교할 수 있도록 구성했습니다.
 
-작업은 Task Queue에 등록되고, 대기 중인 Worker Thread가 `std::condition_variable`을 이용하여 새로운 작업 등록을 통지받아 처리합니다.
+### 영상 전처리 결과 확인
 
-```text
-AddTask()
-    │
-    ▼
-Task Queue
-    │
-    │ notify_one()
-    ▼
-Waiting Worker Thread
-    │
-    ▼
-Task Execute
-    │
-    ▼
-Result / Notification
-```
+전처리 결과 확인에는 다음 폴더의 이미지를 사용할 수 있습니다.
 
-이 구조를 통해 반복적인 스레드 생성 및 종료 비용을 줄이고, 다수의 영상 처리 작업을 제한된 수의 Worker Thread에서 처리할 수 있도록 했습니다.
+`test-image/image-id-card`
 
+해당 폴더에는 테스트용 가상 신분증 이미지가 포함되어 있습니다.
 
-## Worker Thread 구성
+다음과 같은 처리 결과를 확인할 수 있습니다.
 
-프로그램에서는 작업 성격에 따라 두 종류의 Worker를 사용합니다.
-
-### Worker Thread Pool
-
-다수의 독립적인 이미지 처리 작업을 병렬로 수행합니다.
-
-```text
-                ┌─ Worker Thread 1 ─ Image Task
-Task Queue ─────┼─ Worker Thread 2 ─ Image Task
-                ├─ Worker Thread 3 ─ Image Task
-                └─ Worker Thread N ─ Image Task
-```
-
-### Single Thread
-
-Thread Pool과 별도로 하나의 독립적인 작업을 실행하기 위한 Thread입니다.
-
-Thread Pool 작업과 단일 작업을 분리하여 독립적으로 관리할 수 있도록 구성했습니다.
+* 노이즈 및 그림자 제거
+* 대비 및 밝기 보정
+* 문서 경계선 및 모서리 검출
+* 원근 및 기울기 보정
+* 문자 경계 강조 및 이진화
+* 최종 문서 이미지 전처리 결과
 
 
-## UI Thread 연동 구조
+## 성능 테스트 결과
 
-MFC UI 컨트롤은 UI Thread에서 관리해야 하므로 Worker Thread에서 직접 컨트롤을 갱신하지 않습니다.
-
-Worker Thread는 작업 상태와 결과를 Windows Message를 이용하여 UI Thread에 전달합니다.
-
-```text
-Worker Thread
-     │
-     │ PostMessage()
-     ▼
-Windows Message Queue
-     │
-     ▼
-UI Thread
-     │
-     ▼
-MFC Control Update
-```
-
-이를 통해 다음 문제를 방지하도록 구성했습니다.
-
-- Worker Thread의 MFC UI 직접 접근
-- 장시간 작업으로 인한 UI 정지
-- UI Thread와 Worker Thread 간 잘못된 동시 접근
-
-
-## 주요 처리 흐름
-
-```text
-Image Input
-    │
-    ▼
-Preprocessing Option
-    │
-    ▼
-Sequential / Thread Pool Selection
-    │
-    ▼
-OpenCV Image Processing
-    │
-    ▼
-Processing Time Measurement
-    │
-    ▼
-Windows Message Notification
-    │
-    ▼
-MFC UI Result Display
-    │
-    ▼
-Log Output
-```
-
-
-## 성능 측정 목적
-
-본 프로젝트의 Thread Pool 성능 비교는 단순히 병렬 처리가 순차 처리보다 빠르다는 것을 확인하는 것을 목적으로 하지 않습니다.
-
-다음 요소가 실제 영상 처리 성능에 미치는 영향을 비교하는 것을 목적으로 합니다.
-
-1. 입력 이미지의 수와 크기
-2. Worker Thread 수
-3. CPU 논리 프로세서 수
-4. OpenCV 내부 스레드 수
-5. 외부 Thread Pool과 OpenCV 내부 병렬 처리 간의 경합
-
-특히 OpenCV 연산 중 일부는 내부적으로 멀티스레딩을 사용할 수 있기 때문에, 외부 Thread Pool의 Worker 수를 증가시키는 것만으로는 선형적인 성능 향상을 기대하기 어렵습니다.
-
-따라서 실행 환경에 따라 적절한 Worker Thread 수와 OpenCV 내부 스레드 수를 선택하는 것이 중요하며, 프로그램에서 이를 직접 비교할 수 있도록 구성했습니다.
+추가 예정
 
 
 ## 빌드 환경
@@ -301,31 +170,14 @@ Log Output
 - OpenCV 4.10.0
 
 
-## 프로젝트 구성
+## 빌드 방법
 
-### UI Thread
+추가 예정
 
-MFC 기반 화면 처리와 사용자 입력을 담당합니다.
 
-### Worker Thread Pool
+## 실행 파일 다운로드
 
-다수의 영상 처리 작업을 Task Queue에서 가져와 병렬로 처리합니다.
-
-### Single Task Worker
-
-Thread Pool과 별도로 단일 비동기 작업을 수행합니다.
-
-### Task Queue
-
-등록된 영상 처리 작업을 Worker Thread에 전달하기 위한 대기 큐입니다.
-
-### Condition Variable
-
-Task Queue에 새로운 작업이 등록되었을 때 대기 중인 Worker Thread를 깨우는 데 사용합니다.
-
-### Message-based UI Notification
-
-Worker Thread에서 발생한 작업 상태와 처리 결과를 Windows Message를 이용하여 UI Thread에 전달합니다.
+추가 예정
 
 
 ## 사용 기술
@@ -333,14 +185,14 @@ Worker Thread에서 발생한 작업 상태와 처리 결과를 Windows Message�
 - C++17
 - Windows MFC
 - OpenCV
-- `std::thread`
-- `std::mutex`
-- `std::condition_variable`
-- `std::atomic`
-- `std::function`
+- C++ Standard Library
+  - `std::thread`
+  - `std::mutex`
+  - `std::condition_variable`
+  - `std::atomic`
+  - `std::function`
 - Windows Message
-- Multi-thread / Thread Pool
-- Image Processing
+- Thread Pool / Multi-threading
 
 
 ## 참고
