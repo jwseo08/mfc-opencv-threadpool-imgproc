@@ -177,7 +177,20 @@ CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용
 
 ## 실행 파일 다운로드
 
-추가 예정
+별도의 빌드 과정 없이 프로그램을 실행하려면 아래의 배포 파일을 다운로드하십시오.
+
+[실행 파일 다운로드](https://github.com/jwseo08/mfc-opencv-threadpool-imgproc/releases/download/v1.0.0/MfcOpenCVImgProc-v1.0.0.zip)
+
+압축을 해제한 후 `ImgProcAmp.exe`를 실행합니다.
+
+배포 파일에는 실행에 필요한 `opencv_world4100.dll`이 포함되어 있습니다.
+
+실행 환경에 Microsoft Visual C++ Runtime이 설치되어 있지 않은 경우, Microsoft Visual Studio 2022 버전을 지원하는 최신 Microsoft Visual C++ x64 재배포 가능 패키지를 설치하십시오.
+
+> Windows 11 x64 환경에서 빌드 및 테스트했습니다.
+
+
+
 
 
 ## 사용 기술
