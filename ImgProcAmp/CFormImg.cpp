@@ -382,12 +382,10 @@ cv::Mat CFormImg::CaptureWindowToMat()//(HWND hwnd)
 {
 	HWND hwnd = this->GetSafeHwnd();
 
-	// 1. GDI+ 초기화
 	Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 	ULONG_PTR gdiplusToken;
 	Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
-	// 2. 창의 DC 가져오기
 	HDC hdcWindow = ::GetDC(hwnd);
 	HDC hdcMemDC = CreateCompatibleDC(hdcWindow);
 
@@ -399,13 +397,10 @@ cv::Mat CFormImg::CaptureWindowToMat()//(HWND hwnd)
 	HBITMAP hbmScreen = CreateCompatibleBitmap(hdcWindow, width, height);
 	SelectObject(hdcMemDC, hbmScreen);
 
-	// 3. 창의 내용을 비트맵으로 복사
 	BitBlt(hdcMemDC, 0, 0, width, height, hdcWindow, 0, 0, SRCCOPY);
 
-	// 4. GDI+ 비트맵으로 변환
 	Gdiplus::Bitmap bitmap(hbmScreen, nullptr);
 
-	// 5. 비트맵 데이터를 cv::Mat으로 변환
 	Gdiplus::Rect rect(0, 0, width, height);
 	Gdiplus::BitmapData bitmapData;
 
@@ -415,14 +410,10 @@ cv::Mat CFormImg::CaptureWindowToMat()//(HWND hwnd)
 		bitmap.UnlockBits(&bitmapData);
 	}
 
-	// 6. 자원 정리
 	DeleteObject(hbmScreen);
 	DeleteDC(hdcMemDC);
 	::ReleaseDC(hwnd, hdcWindow);
 	Gdiplus::GdiplusShutdown(gdiplusToken);
-
-	// 7. BGR -> RGB 변환 (GDI+는 BGR 형식 사용)
-	//cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);
 
 	return mat;
 }

@@ -62,6 +62,22 @@ const struct TImgProcFile
 	CString pszOutput = _T("");
 };
 
+// 작업 준비 알림 창 클래스
+class CPrepareNotice : public CWnd
+{
+protected:
+	LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_CLOSE ||
+			(message == WM_SYSCOMMAND && (wParam & 0xFFF0) == SC_CLOSE))
+		{
+			return 0;
+		}
+
+		return CWnd::WindowProc(message, wParam, lParam);
+	}
+};
+
 // 메인 다이얼로그
 class CImgProcAmpDlg : public CDialogEx
 {
@@ -91,6 +107,13 @@ private:
 	CBrush m_BkBrush;               // 다아얼로그 배경 색상 브러시
 
 private:
+	// 준비 중 알림 창
+	CPrepareNotice m_prepareNotice;
+	CStatic m_prepareNoticeText;
+	bool ShowPrepareNotice();
+	void ClosePrepareNotice();
+
+private:
 	std::string m_srcPath;   // 원본 이미지 폴더 경로
 	std::string m_dstPath;   // 결과 이미지 저장 폴더 경로
 
@@ -106,7 +129,9 @@ private:
 	uint32_t m_taskImgFileListDst;        // 결과 이미지 파일 목록 작성 작업 아이디
 	uint32_t m_taskImgBatchSingleThread;  // 이미지 순차 처리 작업 아이디
 	
-	
+	// 옵션에 따라서 스레드 풀에 사용할 스레드 수 리스트
+	std::vector<unsigned int> m_vWorkThreadNum;
+
 private:
 	// list file and diplay 함수를 스레드로 구동
 	void ListFile(const std::string& path, const int displayImgList);
@@ -157,6 +182,9 @@ private:
 
 	// 로그 내용 구성
 	std::string MakeLog(const double workTime);
+
+	// 스레드 풀 사용 스레드 수 옵션 설정
+	void SetThreadNumOption(CComboBox& ctrlComboBox);
 
 private:
 	std::chrono::steady_clock::time_point m_startTm;  // 작업 시작 시간 - 작업시간 측정용

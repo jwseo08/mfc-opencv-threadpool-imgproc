@@ -51,6 +51,10 @@ bool SelectFolder(HWND hParent, CString& outFolder);
 std::string GetCurrentDateTime(bool formated = false);
 std::string MakeDirByDateTime(const std::string& parentPath, const std::string& dirNamePrefix);
 int SaveLog(const std::string& pathFile, const std::ostringstream& oss);
+
+int WriteFileFromBuf(const std::string& filename, const void* data, size_t size);
+int ReadFileToVecBuf(const std::string& filename, std::vector<unsigned char>& vBuf);
+
 std::vector<std::string> ListFileWithExt(const std::string& folderPath, const std::vector<std::string>& extensionList);
 
 int ListFileByExt(const std::string& folderPath, 

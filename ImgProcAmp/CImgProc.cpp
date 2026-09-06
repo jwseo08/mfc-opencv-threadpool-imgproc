@@ -5,10 +5,12 @@
 #include <cmath>
 #include <limits>
 
+#include "CommonUtil.h"
+
 // 이미지 처리 - 파이프라인 구성
 bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption) const
 {
-	// 이전 호출의 영상/오류 상태가 남지 않도록 출력 구조체를 기본값으로 재설정한다.
+	// 작업 결과 초기화
 	tResult = TImgProcResult();
 
 	try
@@ -78,14 +80,14 @@ bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, 
 	return false;
 }
 
-// 이미지 처리와 결과 이미지 저장 - 파이프라인 구성
+// 이미지 처리와 결과 이미지 저장 - 파이프라인 구성 - process 작업에 파일 저장 추가
 bool CImgProc::ProcessAndSave(
 	const CString& csImageFileName,
 	const CString& csSaveFileName,
 	TImgProcResult& tResult,
 	const TImgProcOption& tOption) const
 {
-	// 작업 상태 초기화
+	// 작업 결과 초기화
 	tResult = TImgProcResult();
 
 	try
@@ -149,45 +151,48 @@ bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, con
 {
 	if (matSrc.empty() || tOption.nMaxWidth <= 0 || tOption.nMaxHeight <= 0) return false;
 
-	// 이후 단계가 항상 동일한 채널 형식을 받도록 입력을 BGR 3채널로 통일한다.
+	// 채널 수가 다른 이미지를 BGR 3채널로 변환
 	cv::Mat matBgr;
 	switch (matSrc.channels())
 	{
-	case 1:
+	case 1: // 1채널 grayscale 이미지
 		cv::cvtColor(matSrc, matBgr, cv::COLOR_GRAY2BGR);
 		break;
 	case 3:
 		matBgr = matSrc;
 		break;
-	case 4:
+	case 4: // 4채널 알파채널 포함 이미지
 		cv::cvtColor(matSrc, matBgr, cv::COLOR_BGRA2BGR);
 		break;
 	default:
 		return false;
 	}
 
-	// 가로/세로 제한 중 더 엄격한 배율을 선택하고 1.0을 상한으로 두어 확대를 막는다.
+	// 최대 크기보다 크면 크기 조정 - 가로세로 비율 유지
 	const double dScaleX = static_cast<double>(tOption.nMaxWidth) / matBgr.cols;
 	const double dScaleY = static_cast<double>(tOption.nMaxHeight) / matBgr.rows;
 	const double dScale = std::min(1.0, std::min(dScaleX, dScaleY));
 
 	if (dScale < 1.0)
 	{
+		// 최대 크기보다 큰 경우
 		cv::resize(matBgr, matDst, cv::Size(), dScale, dScale, cv::INTER_AREA);
 	}
 	else
 	{
+		// 최대 크기보다 작은 경우
 		matDst = matBgr.clone();
 	}
 
-	return !matDst.empty();
+	if (!matDst.empty()) return true;
+	else return false;
 }
 
 bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
 {
 	if (matSrc.empty()) return false;
 
-	// 양방향 필터는 공간 거리와 색 차이를 함께 고려해 글자 경계의 번짐을 줄인다.
+	// 양방향 필터 적용 - 윤곽선을 최대한 보존하면서 노이즈 감소
 	const int nDiameter = std::max(1, tOption.nBilateralDiameter);
 	cv::bilateralFilter(
 		matSrc,
@@ -196,43 +201,53 @@ bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgPro
 		std::max(1.0, tOption.dBilateralSigmaColor),
 		std::max(1.0, tOption.dBilateralSigmaSpace));
 
-	return !matDst.empty();
+	if (!matDst.empty()) return true;
+	else return false;
 }
 
 bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
 {
 	if (matSrc.empty() || matSrc.channels() != 3) return false;
 
-	// 색상에 미치는 영향을 줄이기 위해 Lab로 변환하고 밝기(L) 채널만 보정한다.
+	// lab 컬러로 변환 - 색상과 밝기 분리
+	// 밝기 채널만 보정해서 색상에 대한 영향 최소화
 	cv::Mat matLab;
 	cv::cvtColor(matSrc, matLab, cv::COLOR_BGR2Lab);
 
 	std::vector<cv::Mat> vecChannels;
 	cv::split(matLab, vecChannels);
 
+	// clahe 파라미터 설정 - clahe 작업에 사용하는 타일 그리드 개수 최소값을 2로 설정
 	const int nTileSize = std::max(2, tOption.nClaheTileSize);
+
+	// clahe 생성, lab 컬러의 L 채널에 clahe 적용
+	// 밝기 채널에 clahe 적용 - 부분 밝기 대비 보정 
 	cv::Ptr<cv::CLAHE> pClahe = cv::createCLAHE(std::max(0.1, tOption.dClaheClipLimit), cv::Size(nTileSize, nTileSize));
 	pClahe->apply(vecChannels[0], vecChannels[0]);
 
+	// clahe 적용이 끝나면 색상 채널과 밝기 채널을 합치고 BGR 형식으로 변환
 	cv::merge(vecChannels, matLab);
 	cv::Mat matClahe;
 	cv::cvtColor(matLab, matClahe, cv::COLOR_Lab2BGR);
 
-	// 명시적인 감마값이 없으면 현재 영상의 평균 밝기로부터 자동 결정한다.
+	// 전체 밝기 보정을 위한 감마값 설정
+	// 명시적인 감마값이 없으면 현재 영상의 평균 밝기를 기반으로 계산
 	double dGamma = tOption.dGamma;
 	if (dGamma <= 0.0) dGamma = CalculateAutoGamma(matClahe);
-
 	dGamma = std::clamp(dGamma, 0.35, 3.0);
 
-	// 모든 픽셀에 pow를 반복하지 않도록 0~255 변환표를 한 번 만들어 적용한다.
+	// look up table 작성 - 각 픽셀에 대한 pow 반복 작업 대체
 	cv::Mat matLut(1, 256, CV_8U);
 	for (int i = 0; i < 256; ++i)
 	{
 		matLut.at<uchar>(i) = cv::saturate_cast<uchar>(std::pow(i / 255.0, dGamma) * 255.0);
 	}
 
+	// 감마값 적용으로 전체 밝기 보정 - look up table 적용
 	cv::LUT(matClahe, matLut, matDst);
-	return !matDst.empty();
+	
+	if (!matDst.empty()) true;
+	else return false;
 }
 
 bool CImgProc::DetectDocumentContour(
@@ -241,36 +256,39 @@ bool CImgProc::DetectDocumentContour(
 	std::vector<cv::Point2f>& vecCorners,
 	const TImgProcOption& tOption) const
 {
-	// 실패 시에도 호출자가 이전 검출 결과를 오인하지 않도록 출력부터 비운다.
+	// 결과값 초기화
 	vecCorners.clear();
 	matCanny.release();
 
 	if (matSrc.empty()) return false;
 
+	// grayscale 변환 - canny 경계선 검출을 위한 전처리
 	cv::Mat matGray;
 	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
 	else matGray = matSrc;
 
-	// 미세 노이즈를 줄인 뒤 Canny로 밝기 변화가 큰 문서/글자 경계를 추출한다.
+	// blur 적용 - canny 경계선 검출을 위한 전처리, 미세 노이즈 제거
 	cv::GaussianBlur(matGray, matGray, cv::Size(5, 5), 0.0);
+	
+	//canny 경계선 검출 - 밝기 변화가 큰 문서 외곽선, 글자 경계선 검출
 	cv::Canny(
 		matGray,
 		matCanny,
 		std::max(0.0, tOption.dCannyThreshold1),
 		std::max(tOption.dCannyThreshold1 + 1.0, tOption.dCannyThreshold2));
 
-	// 끊어진 에지를 닫힘 연산으로 이어 문서 외곽선이 하나의 윤곽이 되도록 한다.
+	// 끊어진 경계선을 닫힘 연산으로 이어줌 - 문서 외곽선 검출을 위한 보정
 	const cv::Mat matKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
 	cv::morphologyEx(matCanny, matCanny, cv::MORPH_CLOSE, matKernel, cv::Point(-1, -1), 2);
 
 	std::vector<std::vector<cv::Point>> vecContours;
 	cv::findContours(matCanny.clone(), vecContours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
 
-	// 너무 작은 사각형(글자, 아이콘 등)을 문서로 오검출하지 않도록 면적 하한을 둔다.
+	// 너무 작은 영역이 문서로 오검출되지 않도록 영역 크기 최소값 지정
 	const double dImageArea = static_cast<double>(matSrc.cols) * matSrc.rows;
 	const double dMinArea = dImageArea * std::clamp(tOption.dMinDocumentAreaRatio, 0.01, 0.95);
 
-	// 조건을 만족하는 볼록 사각형 중 가장 넓은 것을 문서 외곽으로 선택한다.
+	// 조건을 만족하는 사각형 영역 중에서 가장 크기가 큰 것을 문서 경계선으로 지정
 	double dBestArea = 0.0;
 	std::vector<cv::Point> vecBestCorners;
 
@@ -279,11 +297,12 @@ bool CImgProc::DetectDocumentContour(
 		const double dArea = std::fabs(cv::contourArea(vecContour));
 		if (dArea < dMinArea || dArea <= dBestArea) continue;
 
-		// 윤곽선을 둘레의 2% 허용 오차로 단순화해 꼭지점이 네 개인지 검사한다.
+		// 꼭지점이 4개인지 검사 - 정밀도는 윤곽선 둘레 2%
 		const double dPerimeter = cv::arcLength(vecContour, true);
 		std::vector<cv::Point> vecApprox;
 		cv::approxPolyDP(vecContour, vecApprox, dPerimeter * 0.02, true);
 
+		// 꼭지점이 4개이고 볼록 사각형인 경우 문서 후보로 지정
 		if (vecApprox.size() == 4 && cv::isContourConvex(vecApprox))
 		{
 			dBestArea = dArea;
@@ -293,16 +312,18 @@ bool CImgProc::DetectDocumentContour(
 
 	if (vecBestCorners.size() != 4) return false;
 
+	// 찾은 꼭지점을 순서대로 정렬 - 좌상, 우상, 우하, 좌하 순서
 	vecCorners = OrderCorners(vecBestCorners);
 
-	return vecCorners.size() == 4;
+	if (vecCorners.size() == 4) return true;
+	else return false;
 }
 
 bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst) const
 {
 	if (matSrc.empty() || vecCorners.size() != 4) return false;
 
-	// 서로 마주 보는 두 변 중 긴 길이를 출력 사각형의 너비/높이로 사용한다.
+	// 서로 마주 보는 두 변 중 긴 길이를 보정 결과 사각형의 너비와 높이로 사용
 	const double dTopWidth = cv::norm(vecCorners[1] - vecCorners[0]);
 	const double dBottomWidth = cv::norm(vecCorners[2] - vecCorners[3]);
 	const double dLeftHeight = cv::norm(vecCorners[3] - vecCorners[0]);
@@ -312,7 +333,7 @@ bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::P
 	const int nHeight = static_cast<int>(std::round(std::max(dLeftHeight, dRightHeight)));
 	if (nWidth < 2 || nHeight < 2) return false;
 
-	// 검출된 네 점이 대응할 정면 직사각형의 목표 좌표.
+	// 검출된 네 점에 대응하는 보정된 직사각형 좌표 설정 - 보정 목표 좌표
 	const std::vector<cv::Point2f> vecDestination =
 	{
 		cv::Point2f(0.0f, 0.0f),
@@ -321,8 +342,10 @@ bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::P
 		cv::Point2f(0.0f, static_cast<float>(nHeight - 1))
 	};
 
-	// 원본 사각형에서 목표 사각형으로 가는 3x3 원근 변환 행렬을 계산해 워핑한다.
+	// 보정 목표 좌표로 변환하기 위한 변환 행렬 계산 - 원근 변환
 	const cv::Mat matTransform = cv::getPerspectiveTransform(vecCorners, vecDestination);
+	
+	// 워핑 적용 - 기울어진 이미지 보정
 	cv::warpPerspective(
 		matSrc,
 		matDst,
@@ -331,42 +354,54 @@ bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::P
 		cv::INTER_CUBIC,
 		cv::BORDER_REPLICATE);
 
-	return !matDst.empty();
+	if (!matDst.empty()) return true;
+	else return false;
 }
 
 bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
 {
 	if (matSrc.empty()) return false;
 
-	// 컬러 영상은 채널별로 같은 정규화를 수행한 뒤 다시 합친다.
+	// 컬러 이미지 채널 분리 - 채널 별로 정규화 적용하고 다시 합침
 	std::vector<cv::Mat> vecChannels;
 	if (matSrc.channels() == 1) vecChannels.push_back(matSrc);
 	else cv::split(matSrc, vecChannels);
 
+	// morphology 연산에서 사용하는 그림자 제거 커널 생성
+	// 사각형 영역 형태, 중심 anchor를 위한 홀수 크기로 지정 - 글자보다 큰 영역을 처리하도록 설정 - 주의
 	const int nKernelSize = MakeOdd(tOption.nShadowKernelSize, 3);
 	const cv::Mat matKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(nKernelSize, nKernelSize));
 
+	// 각 채널 별로 처리
 	for (cv::Mat& matChannel : vecChannels)
 	{
-		// 큰 커널의 닫힘 연산으로 글자보다 완만하게 변하는 배경 조명을 추정한다.
+		// 크기가 큰 커널을 사용해서 닫힘 연산 적용
+		// 문자 처럼 작은 어두운 영역의 영향 줄임, 완만하게 변화하는 배경 조명 분포 추정
+		// 결과물인 matBackground은 전체적인 조명과 그림자 분포를 추정하는 영상
 		cv::Mat matBackground;
 		cv::morphologyEx(matChannel, matBackground, cv::MORPH_CLOSE, matKernel);
 
+		// 처리 대상 채널과 background 영상 데이터를 32bit float 로 변환
+		// 후속 작업 정밀도 유지를 위해서 변환 - 후속 작업에서 채널 픽셀값을 배경 밝기로 나눔
 		cv::Mat matFloatChannel;
 		cv::Mat matFloatBackground;
 		matChannel.convertTo(matFloatChannel, CV_32F);
 		matBackground.convertTo(matFloatBackground, CV_32F);
-		matFloatBackground += 1.0f;
+		matFloatBackground += 1.0f; // divide by zero 방지
 
-		// 픽셀을 배경 밝기로 나누어 조명 변화/그림자를 평탄화하고 0~255로 복원한다.
+		// 픽셀을 배경 밝기로 나눔 - 조명 변화와 그림자 완화
 		cv::divide(matFloatChannel, matFloatBackground, matFloatChannel, 255.0);
+
+		// 처리가 끝나면 해당 채널을 8비트 영상 형식으로 변환
 		matFloatChannel.convertTo(matChannel, CV_8U);
 	}
 
+	// 모든 채널 처리가 끝나면 채널 합침
 	if (vecChannels.size() == 1) matDst = vecChannels[0];
 	else cv::merge(vecChannels, matDst);
 
-	return !matDst.empty();
+	if (!matDst.empty()) return true;
+	else return false;
 }
 
 bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
@@ -375,18 +410,21 @@ bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const 
 
 	cv::Mat matGray;
 
+	// 3채널 컬러 이미지는 grayscale로 변환 
 	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
 	else matGray = matSrc.clone();
 
-	// 원본에서 저주파(흐린) 성분을 빼는 언샤프 마스크 방식으로 글자 경계를 강조한다.
+	// blur 적용 이미지 생성 - unsharp 마스크 적용을 위한 전처리
 	cv::Mat matBlurred;
 	cv::GaussianBlur(matGray, matBlurred, cv::Size(0, 0), 1.2);
 
+	// unsharp 마스크 적용 - grayscale 이미지와 blur 적용 이미지 차이 이용 - 글자 경계 강조 
 	cv::Mat matSharpened;
 	const double dAmount = std::clamp(tOption.dSharpenAmount, 0.0, 3.0);
 	cv::addWeighted(matGray, 1.0 + dAmount, matBlurred, -dAmount, 0.0, matSharpened);
 
-	// 위치별 주변 밝기를 기준으로 임계값을 정해 조명이 균일하지 않은 문서도 이진화한다.
+	// 이진화
+	// 조명이 균일하지 않더라도 처리가 가능하도록 위치별 주변 밝기를 기준으로 임계값 설정
 	const int nBlockSize = MakeOdd(tOption.nAdaptiveBlockSize, 3);
 	cv::adaptiveThreshold(
 		matSharpened,
@@ -397,7 +435,8 @@ bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const 
 		nBlockSize,
 		tOption.dAdaptiveC);
 
-	return !matDst.empty();
+	if (!matDst.empty()) return true;
+	else return false;
 }
 
 bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage) const
@@ -405,30 +444,24 @@ bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage) 
 	matImage.release();
 	if (csImageFileName.IsEmpty()) return false;
 
-	CFile file;
-	if (!file.Open(csImageFileName, CFile::modeRead | CFile::shareDenyNone)) return false;
-
-	const ULONGLONG nFileSize = file.GetLength();
-	if (nFileSize == 0 || nFileSize > static_cast<ULONGLONG>(std::numeric_limits<size_t>::max())) return false;
-
-	// 경로는 MFC가 처리하고, OpenCV에는 메모리의 파일 바이트를 넘겨 디코딩한다.
-	std::vector<uchar> vecData(static_cast<size_t>(nFileSize));
-	size_t nOffset = 0;
-	// CFile::Read의 UINT 크기 제한을 고려해 최대 1 MiB씩 나누어 읽는다.
-	while (nOffset < vecData.size())
+	std::vector<uchar> vecData;
+	int rt = ReadFileToVecBuf(csImageFileName.GetString(), vecData);
+	if (rt == 0)
 	{
-		const size_t nRemain = vecData.size() - nOffset;
-		const UINT nReadSize = static_cast<UINT>(std::min<size_t>(nRemain, 1024 * 1024));
-		const UINT nRead = file.Read(vecData.data() + nOffset, nReadSize);
-		
-		if (nRead == 0) return false;
-
-		nOffset += nRead;
+		matImage = cv::imdecode(vecData, cv::IMREAD_UNCHANGED);
+		if (matImage.empty())
+		{
+			std::cerr << "image decode fail \n";
+			return false;
+		}
+	}
+	else
+	{
+		std::cerr << "image load fail=" << rt << "\n";
+		return false;
 	}
 
-	matImage = cv::imdecode(vecData, cv::IMREAD_UNCHANGED);
-	
-	return !matImage.empty();
+	return true;
 }
 
 double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc) const
@@ -437,7 +470,8 @@ double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc) const
 	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
 	else matGray = matSrc;
 
-	// mean^gamma = 0.5가 되는 gamma를 구한다. 극단값에서 log(0)을 피하도록 평균을 제한한다.
+	// 감마 보정 후 평균 밝기가 0.5가 되도록 감마값 계산
+    // log(0)를 방지하기 위해서 평균 밝기를 0.01~0.99 범위로 제한
 	const double dMean = std::clamp(cv::mean(matGray)[0] / 255.0, 0.01, 0.99);
 	return std::log(0.5) / std::log(dMean);
 }
@@ -446,7 +480,8 @@ std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& ve
 {
 	if (vecCorners.size() != 4) return {};
 
-	// 좌표 합(x+y)은 좌상/우하를, 차(y-x)는 우상/좌하를 구분하는 데 사용한다.
+	// x + y 는 좌상 우하 구분에 사용
+	// y - x 는 우상 좌하 구분에 사용
 	std::vector<cv::Point2f> vecOrdered(4);
 	double dMinSum = std::numeric_limits<double>::max();
 	double dMaxSum = std::numeric_limits<double>::lowest();
@@ -485,7 +520,7 @@ std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& ve
 
 int CImgProc::MakeOdd(int nValue, int nMinimum) const
 {
-	// adaptiveThreshold와 모폴로지 커널은 중심 픽셀이 있는 홀수 크기를 요구한다.
+	// morphology 커널에 사용하기 위해서 anchor 중심 픽셀이 있는 홀수 크기로 지정
 	int nResult = std::max(nValue, nMinimum);
 	if ((nResult % 2) == 0) ++nResult;
 	return nResult;

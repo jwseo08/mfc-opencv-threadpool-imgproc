@@ -723,6 +723,133 @@ int SaveLog(const std::string& pathFile, const std::ostringstream& oss)
 	return 0;
 }
 
+int WriteFileFromBuf(const std::string& filename, const void* data, size_t size)
+{
+	if (!data && size > 0)return -1;
+
+	FILE* fp = fopen(filename.c_str(), "wb");
+	if (!fp)
+	{
+		perror("file open for writing failed");
+		return -2;
+	}
+
+	if (size > 0)
+	{
+		size_t written = fwrite(data, 1, size, fp);
+
+		if (written != size)
+		{
+			std::cerr << "file write failed" << std::endl;
+			fclose(fp);
+			return -3;
+		}
+	}
+
+	if (fclose(fp) != 0)
+	{
+		perror("file close failed");
+		return -4;
+	}
+
+	return 0;
+}
+
+int ReadFileToVecBuf(const std::string& filename, std::vector<unsigned char>& vBuf)
+{
+	FILE* fp = fopen(filename.c_str(), "rb");
+
+	if (!fp)
+	{
+		perror("file opening failed");
+		return -1;
+	}
+
+#ifdef _WIN32
+
+	if (_fseeki64(fp, 0, SEEK_END) != 0)
+	{
+		perror("file seek failed");
+		fclose(fp);
+		return -2;
+	}
+
+	long long fileSize = _ftelli64(fp);
+
+	if (fileSize < 0)
+	{
+		perror("file size calculation failed");
+		fclose(fp);
+		return -3;
+	}
+
+	if (_fseeki64(fp, 0, SEEK_SET) != 0)
+	{
+		perror("file seek failed");
+		fclose(fp);
+		return -4;
+	}
+
+#else
+
+	if (fseeko(fp, 0, SEEK_END) != 0)
+	{
+		perror("file seek failed");
+		fclose(fp);
+		return -2;
+	}
+
+	off_t fileSize = ftello(fp);
+
+	if (fileSize < 0)
+	{
+		perror("file size calculation failed");
+		fclose(fp);
+		return -3;
+	}
+
+	if (fseeko(fp, 0, SEEK_SET) != 0)
+	{
+		perror("file seek failed");
+		fclose(fp);
+		return -4;
+	}
+
+#endif
+
+	if (static_cast<unsigned long long>(fileSize) > SIZE_MAX)
+	{
+		std::cerr << "File is too large to fit in memory." << std::endl;
+		fclose(fp);
+		return -5;
+	}
+
+	size_t bufSize = static_cast<size_t>(fileSize);
+
+	if (bufSize == 0)
+	{
+		vBuf.clear();
+		fclose(fp);
+		return -6;
+	}
+
+	if (vBuf.size() != bufSize) vBuf.resize(bufSize);
+
+	size_t readSize = fread(vBuf.data(), 1, bufSize, fp);
+
+	if (readSize != bufSize)
+	{
+		std::cerr << "file read failed" << std::endl;
+		fclose(fp);
+		vBuf.clear();
+		return -7;
+	}
+
+	fclose(fp);
+
+	return 0;
+}
+
 void TestFunc()
 {
 	

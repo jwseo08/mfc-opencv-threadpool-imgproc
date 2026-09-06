@@ -131,6 +131,8 @@ void CImgProcAmpDlg::ListFile(const std::string& path, const int displayImgList)
 
 	if (*taskId == 0)
 	{
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
 		AfxMessageBox(_T("싱글 작업을 시작하지 못했습니다."));
 	}
 }
@@ -283,17 +285,9 @@ BOOL CImgProcAmpDlg::OnInitDialog()
 	m_ctrlRdoThp.SetBackgroundColor(COLOR_MINT_GRAY);
 	m_ctrlRdoSeq.SetCheck(BST_CHECKED);
 	m_workMode = WorkMode::Sequencial;
-	
-	// 시스템 스레드 수 파악
-	m_sysThreadNum = std::thread::hardware_concurrency();
-	if (m_sysThreadNum == 0) m_sysThreadNum = 4;
-	
-	char cmbText[128] = {};
-	snprintf(cmbText, sizeof(cmbText), "%d (CPU 지원 스레드 수 - 1)", m_sysThreadNum - 1);
-	m_ctrlCmbThrSet.AddString(cmbText);
-	snprintf(cmbText, sizeof(cmbText), "%d (CPU 지원 스레드 수 / 2)", m_sysThreadNum / 2);
-	m_ctrlCmbThrSet.AddString(cmbText);
-	m_ctrlCmbThrSet.SetCurSel(0);
+
+	// 스레드 풀 사용 스레드 수 옵션 설정
+	SetThreadNumOption(m_ctrlCmbThrSet);
 	m_ctrlCmbThrSet.EnableWindow(FALSE);
 
 	m_ctrlChkOpencvTh.SetTextColor(COLOR_WHITE, TRUE);
@@ -325,6 +319,7 @@ BOOL CImgProcAmpDlg::OnInitDialog()
 
 void CImgProcAmpDlg::OnDestroy()
 {
+	ClosePrepareNotice();
 	CDialogEx::OnDestroy();
 
 	//-------------------------------------
@@ -441,8 +436,43 @@ void CImgProcAmpDlg::OnBnClickedBtnSearchSrc()
 	}
 }
 
+bool CImgProcAmpDlg::ShowPrepareNotice()
+{
+	if (::IsWindow(m_prepareNotice.GetSafeHwnd())) return false;
+	const CString className = AfxRegisterWndClass(0,
+		::LoadCursor(nullptr, IDC_WAIT), ::GetSysColorBrush(COLOR_3DFACE));
+	CRect rect(0, 0, 360, 120);
+	if (!m_prepareNotice.CreateEx(WS_EX_DLGMODALFRAME, className, _T("알림"),
+		WS_POPUP | WS_CAPTION, rect, this, 0)) return false;
+	m_prepareNotice.GetClientRect(&rect);
+	rect.DeflateRect(12, 12);
+	if (!m_prepareNoticeText.Create(_T("작업을 준비 중입니다."),
+		WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+		rect, &m_prepareNotice, 1))
+	{
+		m_prepareNotice.DestroyWindow();
+		return false;
+	}
+	m_prepareNoticeText.SetFont(GetFont());
+	m_prepareNotice.CenterWindow(this);
+	EnableWindow(FALSE);
+	m_prepareNotice.ShowWindow(SW_SHOW);
+	m_prepareNotice.RedrawWindow(nullptr, nullptr,
+		RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	return true;
+}
+
+void CImgProcAmpDlg::ClosePrepareNotice()
+{
+	if (!::IsWindow(m_prepareNotice.GetSafeHwnd())) return;
+	EnableWindow(TRUE);
+	m_prepareNotice.DestroyWindow();
+	SetActiveWindow();
+}
+
 void CImgProcAmpDlg::OnBnClickedBtnStart()
 {
+	if (::IsWindow(m_prepareNotice.GetSafeHwnd())) return;
 	m_ctrlPrgsWork.SetRange(0, 100);
 	m_ctrlPrgsWork.SetPos(0);
 
@@ -458,6 +488,11 @@ void CImgProcAmpDlg::OnBnClickedBtnStart()
 	
 	if (!m_srcPath.empty() && !m_dstPath.empty())
 	{
+		if (!ShowPrepareNotice())
+		{
+			std::cerr << "prepare notify dlg show fail.\n";
+			return;
+		}
 		SetCtrlStatus(WorkStatus::ImgProcStart);
 
 		m_vSrcImgFileList.clear();
@@ -477,6 +512,7 @@ void CImgProcAmpDlg::OnBnClickedBtnStart()
 
 void CImgProcAmpDlg::OnBnClickedBtnStop()
 {
+	ClosePrepareNotice();
 	// 싱글 스레드 작업과 스레드 풀 작업 상관없이 중지 요청 전달
 	m_threadProc.RequestSingleTaskStop();
 	m_threadProc.RequestStop(true);
@@ -514,7 +550,7 @@ void CImgProcAmpDlg::OnBnClickedBtnLogSave()
 
 	if (rt == 0)
 	{
-		std::string msg = "로그 파일이 저장되었습니다.\r\n" + std::string("파일 이름 : ") + m_logFilePathFile;
+		std::string msg = "로그 파일이 저장되었습니다.\r\n" + std::string("파일 위치 : ") + m_logFilePathFile;
 		MessageBox(msg.c_str(), "알림", MB_OK | MB_ICONINFORMATION);
 	}
 	else
@@ -583,6 +619,8 @@ HBRUSH CImgProcAmpDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 LRESULT CImgProcAmpDlg::OnImgProcTaskStarted(WPARAM wParam, LPARAM lParam)
 {
+	if (m_mapImgProcTasks.find(static_cast<std::uint32_t>(wParam)) != m_mapImgProcTasks.end())
+		ClosePrepareNotice();
 	const std::uint32_t nTaskId = static_cast<std::uint32_t>(wParam);
 
 	auto it = m_mapImgProcTasks.find(nTaskId);
@@ -753,6 +791,7 @@ void CImgProcAmpDlg::CheckImgProcBatchCompleted()
 
 void CImgProcAmpDlg::OnImgProcTasksCompletedAll()
 {
+	ClosePrepareNotice();
 	// 스레드 풀 작업이 모두 끝나면 스레드 풀 종료
 	m_threadProc.Stop();
 
@@ -814,7 +853,10 @@ void CImgProcAmpDlg::StartImageBatchThreadPool()
 	}
 	else
 	{
-		std::cerr << "src img list empty\n";
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
+		m_bImgBatchRunning = false;
+		AfxMessageBox(_T("처리할 원본 이미지가 없습니다."));
 		return;
 	}
 
@@ -871,7 +913,10 @@ void CImgProcAmpDlg::StartImageBatchThreadSingle()
 	}
 	else
 	{
-		std::cerr << "src img list empty\n";
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
+		m_bImgBatchRunning = false;
+		AfxMessageBox(_T("처리할 원본 이미지가 없습니다."));
 		return;
 	}
 
@@ -885,6 +930,8 @@ void CImgProcAmpDlg::StartImageBatchThreadSingle()
 
 	if (m_taskImgBatchSingleThread == 0)
 	{
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
 		AfxMessageBox(_T("싱글 작업을 시작하지 못했습니다."));
 	}
 }
@@ -945,6 +992,29 @@ std::string CImgProcAmpDlg::MakeLog(const double workTime)
 	return ossLog.str();
 }
 
+void CImgProcAmpDlg::SetThreadNumOption(CComboBox& ctrlComboBox)
+{
+	// 시스템 스레드 수 파악
+	unsigned int supportThreadNum = std::thread::hardware_concurrency();
+	if (supportThreadNum == 0) supportThreadNum = 4;
+
+	m_vWorkThreadNum.clear();
+
+	char cmbText[128] = {};
+	unsigned int workThreadNum = 0;
+	float weight[] = { 3.0, 2.0, 1.5, 1, 0.5 };
+
+	for (int i = 0; i < (int)std::size(weight); i++)
+	{
+		workThreadNum = (unsigned int)(supportThreadNum * weight[i]);
+		snprintf(cmbText, sizeof(cmbText), "%d (CPU 지원 스레드 수 X %.1f)", workThreadNum, weight[i]);
+		ctrlComboBox.AddString(cmbText);
+		m_vWorkThreadNum.push_back(workThreadNum);
+	}
+
+	ctrlComboBox.SetCurSel(0);
+}
+
 //-------------------------------------------
 
 LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
@@ -959,6 +1029,8 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 
 		if (nResult != 0)
 		{
+			ClosePrepareNotice();
+			SetCtrlStatus(WorkStatus::WorkStop);
 			AfxMessageBox(_T("이미지 목록 검색에 실패했습니다."));
 			return 0;
 		}
@@ -990,9 +1062,12 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 		else
 		{
 			// 스레드 풀에서 사용할 스레드 개수 설정
-			if (m_ctrlCmbThrSet.GetCurSel() == 0) m_workThreadNum = m_sysThreadNum - 1;
-			else m_workThreadNum = m_sysThreadNum / 2;
+			m_workThreadNum = m_vWorkThreadNum[m_ctrlCmbThrSet.GetCurSel()];
 
+			//if (m_ctrlCmbThrSet.GetCurSel() == 0) m_workThreadNum = m_sysThreadNum - 1;
+			//else m_workThreadNum = m_sysThreadNum / 2;
+
+			// 기존에 설정되어있는 스레드 수량과 다르면 새로운 값으로 설정
 			if (m_threadProc.GetThreadCount() != m_workThreadNum)
 			{
 				m_threadProc.Stop();
@@ -1005,6 +1080,8 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 			{
 				if (!m_threadProc.Start())
 				{
+					ClosePrepareNotice();
+					SetCtrlStatus(WorkStatus::WorkStop);
 					AfxMessageBox(_T("이미지 처리 스레드풀을 시작하지 못했습니다."));
 					return 0;
 				}
@@ -1052,12 +1129,20 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 
 LRESULT CImgProcAmpDlg::OnSingleTaskStarted(WPARAM wParam, LPARAM lParam)
 {
+	if (m_taskImgBatchSingleThread != 0 && wParam == m_taskImgBatchSingleThread)
+		ClosePrepareNotice();
 	std::cout << "싱글 스레드 작업이 시작되었습니다." << std::endl;
 	return 0;
 }
 
 LRESULT CImgProcAmpDlg::OnSingleTaskFailed(WPARAM wParam, LPARAM lParam)
 {
+	if (wParam == m_taskImgFileListSrc || wParam == m_taskImgBatchSingleThread)
+	{
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
+		AfxMessageBox(_T("작업을 실행하지 못했습니다."));
+	}
 	std::cout << "싱글 스레드 작업이 실패했습니다." << std::endl;
 	return 0;
 }
