@@ -987,6 +987,8 @@ std::string CImgProcAmpDlg::MakeLog(const double workTime)
 	ossLog << "OpenCV 내부 스레드 : " << opencvThreadUse << "\r\n";
 	ossLog << "작업 시간 : " << workTime << " ms" << "\r\n";
 	
+	ossLog << "---------------------------------------------------------" << "\r\n";
+	
 	std::cout << ossLog.str() << std::endl;
 
 	return ossLog.str();
@@ -1002,7 +1004,7 @@ void CImgProcAmpDlg::SetThreadNumOption(CComboBox& ctrlComboBox)
 
 	char cmbText[128] = {};
 	unsigned int workThreadNum = 0;
-	float weight[] = { 3.0, 2.0, 1.5, 1, 0.5 };
+	float weight[] = { 3.0, 2.0, 1.5, 1, 0.8, 0.5 };
 
 	for (int i = 0; i < (int)std::size(weight); i++)
 	{

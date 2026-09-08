@@ -169,7 +169,7 @@ CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용
 ### 전체 처리 시간 비교
 
 <p align="center">
-  <img src="screenshot/threadpool_performance_comparison.png" width="900">
+  <img src="screenshot/threadpool_performance_comparison.jpg" width="900">
 </p>
 
 순차 처리의 경우 약 **29초**가 소요되었으며, Thread Pool을 적용한 경우 약 **4.8 ~ 6.1초** 수준으로 처리 시간이 크게 단축되었습니다.  
@@ -178,7 +178,7 @@ CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용
 ### Thread Pool 구간 확대 비교
 
 <p align="center">
-  <img src="screenshot/threadpool_worker_zoom_comparison.png" width="900">
+  <img src="screenshot/threadpool_worker_zoom_comparison.jpg" width="900">
 </p>
 
 순차 처리 구간을 제외하고 Thread Pool 구간만 확대해 보면, Worker Thread 수가 증가할수록 처리 시간이 감소하다가 **12 ~ 18개 구간**부터는 성능 향상이 거의 정체되는 경향을 확인할 수 있습니다.  
