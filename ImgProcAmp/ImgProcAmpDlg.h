@@ -102,7 +102,7 @@ private:
 	CModiButton m_btnStop;          // 작업 중지 버튼
 	CModiButton m_btnLogSave;       // 로그 저장 버튼
 	CModRadioBtn m_ctrlRdoSeq;      // 순차 처리 선택 라디오 버튼
-	CModRadioBtn m_ctrlRdoThp;      // 스레드 풀 처리 선택 라이도 버튼
+	CModRadioBtn m_ctrlRdoThp;      // 스레드 풀 처리 선택 라디오 버튼
 	CModCheckBox m_ctrlChkOpencvTh; // opencv 스레드 사용 여부 체크 박스
 	CBrush m_BkBrush;               // 다아얼로그 배경 색상 브러시
 

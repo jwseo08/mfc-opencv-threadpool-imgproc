@@ -175,6 +175,11 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 	//defualt:
 	case WorkStatus::AppStart:
 		m_btnSearchPathSrc.EnableWindow(TRUE);
+		m_ctrlRdoSeq.EnableWindow(TRUE);
+		m_ctrlRdoThp.EnableWindow(TRUE);
+		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+		m_ctrlCmbThrSet.EnableWindow(FALSE);
+
 		m_btnStart.EnableWindow(TRUE);
 		m_btnStop.EnableWindow(FALSE);
 		m_btnLogSave.EnableWindow(FALSE);
@@ -184,6 +189,11 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 	case WorkStatus::SrcImgLoaded:
 	case WorkStatus::ImgProcStart:
 		m_btnSearchPathSrc.EnableWindow(FALSE);
+		m_ctrlRdoSeq.EnableWindow(FALSE);
+		m_ctrlRdoThp.EnableWindow(FALSE);
+		m_ctrlChkOpencvTh.EnableWindow(FALSE);
+		m_ctrlCmbThrSet.EnableWindow(FALSE);
+
 		m_btnStart.EnableWindow(FALSE);
 		m_btnStop.EnableWindow(TRUE);
 		m_btnLogSave.EnableWindow(FALSE);
@@ -192,6 +202,13 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 
 	case WorkStatus::ImgProcEnd:
 		m_btnSearchPathSrc.EnableWindow(TRUE);
+		m_ctrlRdoSeq.EnableWindow(TRUE);
+		m_ctrlRdoThp.EnableWindow(TRUE);
+		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+		
+		if (m_ctrlRdoSeq.GetCheck() == 1) m_ctrlCmbThrSet.EnableWindow(FALSE);
+		else m_ctrlCmbThrSet.EnableWindow(TRUE);
+
 		m_btnStart.EnableWindow(TRUE);
 		m_btnStop.EnableWindow(FALSE);
 		m_btnLogSave.EnableWindow(TRUE);
@@ -200,6 +217,13 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 
 	case WorkStatus::WorkStop:
 		m_btnSearchPathSrc.EnableWindow(TRUE);
+		m_ctrlRdoSeq.EnableWindow(TRUE);
+		m_ctrlRdoThp.EnableWindow(TRUE);
+		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+
+		if (m_ctrlRdoSeq.GetCheck() == 1) m_ctrlCmbThrSet.EnableWindow(FALSE);
+		else m_ctrlCmbThrSet.EnableWindow(TRUE);
+
 		m_btnStart.EnableWindow(TRUE);
 		m_btnStop.EnableWindow(FALSE);
 		m_btnLogSave.EnableWindow(TRUE);
@@ -1004,7 +1028,7 @@ void CImgProcAmpDlg::SetThreadNumOption(CComboBox& ctrlComboBox)
 
 	char cmbText[128] = {};
 	unsigned int workThreadNum = 0;
-	float weight[] = { 3.0, 2.0, 1.5, 1, 0.8, 0.5 };
+	float weight[] = { 3.0f, 2.0f, 1.5f, 1.0f, 0.8f, 0.5f };
 
 	for (int i = 0; i < (int)std::size(weight); i++)
 	{
