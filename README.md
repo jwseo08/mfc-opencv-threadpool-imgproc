@@ -8,6 +8,10 @@
   MFC 기반 영상 전처리 및 스레드풀 병렬 처리 성능 비교 프로그램
 </p>
 
+<p align="center">
+  C++17 · MFC · OpenCV · Thread Pool · std::thread · Windows Message · Image Processing
+</p>
+
 ## 프로젝트 소개
 
 Windows MFC와 스레드풀(Thread Pool)을 기반으로 구현한 영상 처리 데모 프로그램입니다.
