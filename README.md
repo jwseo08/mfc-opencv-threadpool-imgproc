@@ -172,11 +172,14 @@ CPU가 지원하는 논리 프로세서 수보다 많은 Worker Thread를 사용
 
 ## 빌드 방법
 
-코드를 다운로드 받고 Visual Studio 2022를 이용해서 ImgProcAmp.sln 파일을 엽니다. 
+1. 코드를 다운로드하거나 Repository를 Clone 합니다.
+2. Visual Studio 2022에서 `ImgProcAmp.sln` 파일을 엽니다.
+3. 상단 도구 모음에서 **솔루션 구성**을 `Release`로 설정합니다.
+4. **솔루션 플랫폼**을 `x64`로 설정합니다.
+5. **빌드 > 솔루션 빌드** 메뉴를 실행합니다.
+6. 빌드가 완료되면 `x64/Release` 폴더에 `ImgProcAmp.exe`가 생성됩니다.
 
-Visual Studio 2022 설정에서 솔루션 구성과 솔루션 플랫폼을 Release와 x64로 설정하고 빌드 메뉴를 이용하여 솔루션을 빌드합니다. 
-
-빌드 결과물인 프로그램 실행파일은 x64/Release 폴더에 생성됩니다. x64/Release 폴더에는 프로그램 실행 시 필요한 OpenCV DLL이 포함되어 있습니다.
+x64/Release 폴더에는 프로그램 실행 시 필요한 OpenCV DLL이 포함되어 있습니다.
 
 
 ## 실행 파일 다운로드
