@@ -240,9 +240,15 @@ CPU가 지원하는 논리 프로세서 수보다 많은 워커 스레드를 사
 
 압축을 해제한 후 `ImgProcAmp.exe`를 실행합니다.
 
-배포 파일에는 실행에 필요한 `opencv_world4100.dll`이 포함되어 있습니다.
+배포 파일에는 프로그램 실행에 필요한 `opencv_world4100.dll`이 포함되어 있습니다.
 
-실행 환경에 Microsoft Visual C++ Runtime이 설치되어 있지 않은 경우, Microsoft Visual Studio 2022 버전을 지원하는 최신 Microsoft Visual C++ x64 재배포 가능 패키지를 설치하십시오.
+실행 환경에 Microsoft Visual C++ Runtime이 설치되어 있지 않은 경우, Visual Studio 2022를 지원하는 최신 Microsoft Visual C++ x64 재배포 가능 패키지를 설치하십시오.
+
+### Windows 보안 경고 안내
+
+실행 파일 및 배치 파일을 처음 실행하는 경우 Windows의 **Microsoft Defender SmartScreen**에 의해 보안 경고가 표시될 수 있습니다.
+
+본 프로젝트의 배포 파일은 코드 서명 인증서로 디지털 서명되어 있지 않기 때문에, Windows에서 게시자 또는 파일에 대한 충분한 평판 정보를 확인할 수 없는 경우 이러한 경고가 나타날 수 있습니다.
 
 > Windows 11 x64 환경에서 빌드 및 테스트했습니다.
 
