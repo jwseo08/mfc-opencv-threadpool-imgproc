@@ -8,7 +8,7 @@
 #include "CommonUtil.h"
 
 // 이미지 처리 - 파이프라인 구성
-bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption) const
+bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption)
 {
 	// 작업 결과 초기화
 	tResult = TImgProcResult();
@@ -85,7 +85,7 @@ bool CImgProc::ProcessAndSave(
 	const CString& csImageFileName,
 	const CString& csSaveFileName,
 	TImgProcResult& tResult,
-	const TImgProcOption& tOption) const
+	const TImgProcOption& tOption)
 {
 	// 작업 결과 초기화
 	tResult = TImgProcResult();
@@ -147,7 +147,7 @@ bool CImgProc::ProcessAndSave(
 	return false;
 }
 
-bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
+bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
 {
 	if (matSrc.empty() || tOption.nMaxWidth <= 0 || tOption.nMaxHeight <= 0) return false;
 
@@ -188,7 +188,7 @@ bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, con
 	else return false;
 }
 
-bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
+bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
 {
 	if (matSrc.empty()) return false;
 
@@ -205,7 +205,7 @@ bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgPro
 	else return false;
 }
 
-bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
+bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
 {
 	if (matSrc.empty() || matSrc.channels() != 3) return false;
 
@@ -254,7 +254,7 @@ bool CImgProc::DetectDocumentContour(
 	const cv::Mat& matSrc,
 	cv::Mat& matCanny,
 	std::vector<cv::Point2f>& vecCorners,
-	const TImgProcOption& tOption) const
+	const TImgProcOption& tOption)
 {
 	// 결과값 초기화
 	vecCorners.clear();
@@ -319,7 +319,7 @@ bool CImgProc::DetectDocumentContour(
 	else return false;
 }
 
-bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst) const
+bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst)
 {
 	if (matSrc.empty() || vecCorners.size() != 4) return false;
 
@@ -358,7 +358,7 @@ bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::P
 	else return false;
 }
 
-bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
+bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
 {
 	if (matSrc.empty()) return false;
 
@@ -404,7 +404,7 @@ bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgPr
 	else return false;
 }
 
-bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const
+bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
 {
 	if (matSrc.empty()) return false;
 
@@ -439,7 +439,7 @@ bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const 
 	else return false;
 }
 
-bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage) const
+bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage)
 {
 	matImage.release();
 	if (csImageFileName.IsEmpty()) return false;
@@ -464,7 +464,7 @@ bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage) 
 	return true;
 }
 
-double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc) const
+double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc)
 {
 	cv::Mat matGray;
 	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
@@ -476,7 +476,7 @@ double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc) const
 	return std::log(0.5) / std::log(dMean);
 }
 
-std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& vecCorners) const
+std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& vecCorners)
 {
 	if (vecCorners.size() != 4) return {};
 
@@ -518,7 +518,7 @@ std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& ve
 	return vecOrdered;
 }
 
-int CImgProc::MakeOdd(int nValue, int nMinimum) const
+int CImgProc::MakeOdd(int nValue, int nMinimum)
 {
 	// morphology 커널에 사용하기 위해서 anchor 중심 픽셀이 있는 홀수 크기로 지정
 	int nResult = std::max(nValue, nMinimum);

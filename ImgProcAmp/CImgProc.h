@@ -48,46 +48,46 @@ public:
 	~CImgProc() = default;
 
 	// 이미지 처리 - 파이프라인 실행
-	bool Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption = TImgProcOption()) const;
+	bool Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption = TImgProcOption());
 
 	// 이미지 처리 및 결과 저장 - process 작업에 결과 이미지 파일 저장 추가
-	bool ProcessAndSave(const CString& csImageFileName, const CString& csSaveFileName, TImgProcResult& tResult, const TImgProcOption& tOption) const;
+	bool ProcessAndSave(const CString& csImageFileName, const CString& csSaveFileName, TImgProcResult& tResult, const TImgProcOption& tOption);
 
 	// 이미지 크기 조정, bgr 3채널 변환
-	bool ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const;
+	bool ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
 
 	// 양방향 필터 적용 - 경계선 유지, 노이즈 제거
-	bool RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const;
+	bool RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
 
 	// clahe 부분 대비 보정, 감마 전체 밝기 보정
-	bool ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const;
+	bool ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
 
 	// 문서 경계선 검출
 	bool DetectDocumentContour(
 		const cv::Mat& matSrc,
 		cv::Mat& matCanny,
 		std::vector<cv::Point2f>& vecCorners,
-		const TImgProcOption& tOption) const;
+		const TImgProcOption& tOption);
 
 	// 원근 보정 - 문서 꼭지점을 직사각형으로 변환
-	bool CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst) const;
+	bool CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst);
 
 	// 배경 밝기로 픽셀값 보정 - 그림자 완화
-	bool RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const;
+	bool RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
 
 	// unsharp 마스크 선명화, 적응형 이진화
-	bool BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) const;
+	bool BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
 
 private:
 	// 이미지 파일 로드
-	bool LoadImageFile(const CString& csImageFileName, cv::Mat& matImage) const;
+	bool LoadImageFile(const CString& csImageFileName, cv::Mat& matImage);
 	
 	// 평균 밝기 기준 감마값 계산
-	double CalculateAutoGamma(const cv::Mat& matSrc) const;
+	double CalculateAutoGamma(const cv::Mat& matSrc);
 	
 	// 꼭지점 정렬 - 좌상, 우상, 우하, 좌하 순서
-	std::vector<cv::Point2f> OrderCorners(const std::vector<cv::Point>& vecCorners) const;
+	std::vector<cv::Point2f> OrderCorners(const std::vector<cv::Point>& vecCorners);
 	
 	// 커널 크기 설정 시 홀수로 보정
-	int MakeOdd(int nValue, int nMinimum) const;
+	int MakeOdd(int nValue, int nMinimum);
 };
