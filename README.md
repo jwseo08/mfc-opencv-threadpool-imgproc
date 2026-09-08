@@ -256,16 +256,6 @@ Windows 11에서 **Smart App Control**이 활성화되어 있는 경우, 코드 
 
 필요한 경우 Repository에 공개되어 있는 전체 소스 코드를 확인할 수 있습니다.
 
-### Windows 보안 경고 안내
-
-본 프로젝트의 배포 파일은 코드 서명 인증서로 디지털 서명되어 있지 않기 때문에, Windows에서 경고가 표시될 수 있습니다.
-
-실행 파일 및 배치 파일을 처음 실행하는 경우 **Windows의 Microsoft Defender SmartScreen**에 의해 보안 경고가 표시될 수 있습니다. Microsoft Defender SmartScreen에서 추가 정보 항목을 마우스로 클릭하면 실행 버튼이 표시됩니다. 실행 버튼을 클릭하면 프로그램이 실행됩니다.
-
-Windows 11에서 **Smart App Control**이 활성화되어 있는 경우, 코드 서명이 없는 실행 파일은 알려지지 않은 앱으로 판단되어 실행이 차단될 수 있습니다. 이 경우 SmartScreen 경고와 달리 사용자가 실행을 할 수 없습니다.
-
-필요한 경우 Repository에 공개되어 있는 전체 소스 코드를 확인하고 Visual Studio에서 빌드하여 사용할 수 있습니다.
-
 ## 사용 기술
 
 * C++17
