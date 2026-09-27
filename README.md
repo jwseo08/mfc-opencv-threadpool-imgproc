@@ -343,12 +343,12 @@ Windows 11에서 **Smart App Control**이 활성화되어 있는 경우, 코드 
 * Windows MFC
 * OpenCV
 * C++ Standard Library
- - `std::thread`
- - `std::mutex`
- - `std::condition_variable`
- - `std::atomic`
- - `std::function`
- - `std::unique_ptr`
+  - `std::thread`
+  - `std::mutex`
+  - `std::condition_variable`
+  - `std::atomic`
+  - `std::function`
+  - `std::unique_ptr`
 * Windows Message
 * Thread Pool / Multi-threading
 
