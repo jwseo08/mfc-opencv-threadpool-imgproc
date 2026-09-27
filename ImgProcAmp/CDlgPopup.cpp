@@ -133,7 +133,14 @@ void CDlgPopup::SetImg(Bitmap* pBitImg, CString csImgPathFile)
 		csFileName = GetFileNameFromPathFile(csImgPathFile);
 	}
 
-	SetWindowText(csFileName);
+	std::string title = std::string(csFileName.GetString()) + " " +
+		"(" +
+		std::to_string(m_pDisplayBitImg->GetWidth()) +
+		"x" +
+		std::to_string(m_pDisplayBitImg->GetHeight()) +
+		")";
+
+	SetWindowText(title.c_str());
 	ResizeToImage();
 
 	Invalidate(FALSE);
@@ -158,17 +165,17 @@ void CDlgPopup::ResizeToImage()
 		return;
 	}
 
-	const UINT nImgWidth = m_pDisplayBitImg->GetWidth();
-	const UINT nImgHeight = m_pDisplayBitImg->GetHeight();
+	UINT nImgWidth = m_pDisplayBitImg->GetWidth();
+	UINT nImgHeight = m_pDisplayBitImg->GetHeight();
 	if (nImgWidth == 0 || nImgHeight == 0) return;
 	
 	// dialog 최대 크기는 제목 표시줄과 테두리 포함 크기
 	CRect rcNonClient(0, 0, 0, 0);
 	::AdjustWindowRectEx(&rcNonClient, GetStyle(), FALSE, GetExStyle());
-	const int nNonClientWidth = rcNonClient.Width();
-	const int nNonClientHeight = rcNonClient.Height();
-	const int nMaxClientWidth = std::max(1, MAX_DLG_SIZE - nNonClientWidth);
-	const int nMaxClientHeight = std::max(1, MAX_DLG_SIZE - nNonClientHeight);
+	int nNonClientWidth = rcNonClient.Width();
+	int nNonClientHeight = rcNonClient.Height();
+	int nMaxClientWidth = std::max(1, MAX_DLG_SIZE - nNonClientWidth);
+	int nMaxClientHeight = std::max(1, MAX_DLG_SIZE - nNonClientHeight);
 
 	double dScale = std::min((double)nMaxClientWidth / nImgWidth,
 		(double)nMaxClientHeight / nImgHeight);
@@ -193,8 +200,7 @@ void CDlgPopup::ResizeToImage()
 
 	CRect rcWindow(0, 0, nClientWidth, nClientHeight);
 	::AdjustWindowRectEx(&rcWindow, GetStyle(), FALSE, GetExStyle());
-	SetWindowPos(nullptr, 0, 0, rcWindow.Width(), rcWindow.Height(),
-		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SetWindowPos(nullptr, 0, 0, rcWindow.Width(), rcWindow.Height(), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 TRatioInfo CDlgPopup::GetImgRatioInfo(Bitmap* pDrawImg, CRect DestRect)

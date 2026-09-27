@@ -47,7 +47,7 @@ public:
 
 	// 스레드 풀에서 사용하는 스레드, 작업 큐 수량 설정 
 	bool SetThreadCount(std::size_t threadCount);
-	std::size_t GetThreadCount() const noexcept;
+	std::size_t GetThreadCount() noexcept;
 	bool SetMaxQueueSize(std::size_t maxQueueSize);
 
 	//----------------------------------------------------------
@@ -67,11 +67,11 @@ public:
 	std::uint32_t AddTask(SimpleTask task);
 
 	// 스레드 풀 상태 확인 반환 - 동작 중, 중지 요청 받음 상태
-	bool IsRunning() const noexcept;
-	bool IsStopRequested() const noexcept;
+	bool IsRunning() noexcept;
+	bool IsStopRequested() noexcept;
 
 	// 작업 큐에 등록되어있고 아직 처리되지 않은 작업 수량 반환
-	std::size_t GetPendingTaskCount() const;
+	std::size_t GetPendingTaskCount();
 
 	//----------------------------------------------------------
 
@@ -82,8 +82,8 @@ public:
 	void RequestSingleTaskStop();                    // 싱글 스레드 중지 요청
 	void StopSingleTask(bool wait = true);           // 싱글 스레드 중지
 	void WaitSingleTask();                           // 싱글 스레드 작업이 끝날 때까지 대기하고 자원 정리
-	bool IsSingleTaskRunning() const noexcept;       // 싱글 스레드 동작 상태 반환 - 동작 중인지
-	bool IsSingleTaskStopRequested() const noexcept; // 싱글 스레드 동작 상태 반환 - 중지 요청을 받았는지
+	bool IsSingleTaskRunning() noexcept;       // 싱글 스레드 동작 상태 반환 - 동작 중인지
+	bool IsSingleTaskStopRequested() noexcept; // 싱글 스레드 동작 상태 반환 - 중지 요청을 받았는지
 
 	// 싱글 스레드로 SimpleTask 형태의 작업을 실행 - StartSingleTask(SimpleTask)의 서브 함수
 	int RunSimpleTask(SimpleTask function, const std::atomic<bool>& stopRequested);
@@ -92,7 +92,7 @@ public:
 	
 	// 메시지를 보낼 윈도우 설정, 가져오기
 	void SetNotifyWindow(HWND notifyWindow);
-	HWND GetNotifyWindow() const noexcept;
+	HWND GetNotifyWindow() noexcept;
 
 private:
 	// 작업 요소
@@ -121,6 +121,8 @@ private:
 private:
 	mutable std::mutex m_mutex;              // 스레드 풀 동작 시 부가 작업의 안전을 위한 mutex
 	std::condition_variable m_taskCondition; // 스레드 풀을 구성하는 스레드의 대기와 시작 제어
+	// 작업 큐가 가득 찼을 때 AddTask를 대기시키고, 큐에 빈자리가 생기면 깨우기 위한 조건 변수
+	std::condition_variable m_queueSpaceCondition;
 	std::queue<TaskItem> m_tasks;            // 스레드 풀 작업 목록 - 작업 큐
 	std::vector<std::thread> m_workers;      // 스레드 풀을 구성하는 스레드 목록
 
@@ -132,7 +134,7 @@ private:
 	void SingleTaskLoop(std::uint32_t taskId, Task task); 
 
 	// 대상 윈도우에 메시지 송신
-	void PostNotify(UINT msg, WPARAM wParam = 0, LPARAM lParam = NULL) const;
+	void PostNotify(UINT msg, WPARAM wParam = 0, LPARAM lParam = NULL);
 	
 	void JoinWorkers();      // 스레드 풀에 등록된 모든 worker에 대해서 종료 대기와 thread 목록 정리
 	void JoinSingleWorker(); // 싱글 스레드 worker 종료 대기

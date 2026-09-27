@@ -512,14 +512,14 @@ std::string MakeAbsPath(const std::string& relativePath, bool exist/*=false*/)
 	}
 }
 
-char ToLowerChar(unsigned char c)
-{
-	return static_cast<char>(std::tolower(c));
-}
-
 std::string ToLowerString(std::string str)
 {
-	std::transform(str.begin(), str.end(), str.begin(), ToLowerChar);
+	std::transform(str.begin(), str.end(), str.begin(), 
+		[](char a)
+		{
+			return std::tolower(a);
+		} );
+	
 	return str;
 }
 
@@ -725,7 +725,7 @@ int SaveLog(const std::string& pathFile, const std::ostringstream& oss)
 
 int WriteFileFromBuf(const std::string& filename, const void* data, size_t size)
 {
-	if (!data && size > 0)return -1;
+	if (!data && size > 0) return -1;
 
 	FILE* fp = fopen(filename.c_str(), "wb");
 	if (!fp)
@@ -850,19 +850,3 @@ int ReadFileToVecBuf(const std::string& filename, std::vector<unsigned char>& vB
 	return 0;
 }
 
-void TestFunc()
-{
-	
-}
-
-//CImage* ImgCvToCImg(cv::Mat* pMatImg)
-//{
-//	return nullptr;
-//}
-
-//Bitmap* GetBitmapFromCv(cv::Mat MatImg)
-//{
-//	cv::Size size = MatImg.size();
-//	Bitmap BitImg(size.width, size.height, MatImg.step1(), PixelFormat24bppRGB, MatImg.data);
-//	return &BitImg;
-//}

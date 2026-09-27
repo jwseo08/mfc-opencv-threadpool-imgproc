@@ -94,7 +94,8 @@
       <PreprocessorDefinitions>_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>..\library\opencv-4.10.0-shared\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\library\opencv-4.10.0-shared\include;..\..\ImgProc04-cgt\ImgProc</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -119,6 +120,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\..\ImgProc04-cgt\ImgProc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -143,6 +145,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\..\ImgProc04-cgt\ImgProc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -170,8 +173,9 @@
       <PreprocessorDefinitions>_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>..\library\opencv-4.10.0-shared\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\library\opencv-4.10.0-shared\include;..\ImgProc</AdditionalIncludeDirectories>
       <Optimization>MaxSpeed</Optimization>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -197,7 +201,6 @@
     <ClInclude Include="CDlgPopup.h" />
     <ClInclude Include="CFormImg.h" />
     <ClInclude Include="CFormImgList.h" />
-    <ClInclude Include="CImgProc.h" />
     <ClInclude Include="CModCheckBox.h" />
     <ClInclude Include="CModiButton.h" />
     <ClInclude Include="CModiScrollBar.h" />
@@ -217,7 +220,6 @@
     <ClCompile Include="CDlgPopup.cpp" />
     <ClCompile Include="CFormImg.cpp" />
     <ClCompile Include="CFormImgList.cpp" />
-    <ClCompile Include="CImgProc.cpp" />
     <ClCompile Include="CModCheckBox.cpp" />
     <ClCompile Include="CModiButton.cpp" />
     <ClCompile Include="CModiScrollBar.cpp" />
@@ -241,6 +243,13 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\ImgProcAmp.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ImgProc\ImgProc.vcxproj">
+      <Project>{d7d2a9b7-981d-4aef-a60c-7f9de488bd0c}</Project>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

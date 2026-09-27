@@ -1,14 +1,108 @@
 #include "pch.h"
-#include "CImgProc.h"
+#include "ImgProcCore.h"
 
+#include <iostream>
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
+#include "ImgProcApi.h"     // 이미지 처리 옵션 사용
 #include "CommonUtil.h"
 
+// 이미지 처리 내부 기본 함수
+int ImgProcCore::ProcessMatImg(const cv::Mat& matInput, cv::Mat& matOutput, const TImgProcOption& tOption)
+{
+	try
+	{
+		if (matInput.empty())
+		{
+			std::cerr << "input mat image data empty\n";
+			return -1;
+		}
+
+		// 각파이프라인 단계 별 출력 - 다음 단계의 입력으로 전달
+		cv::Mat matResized;       // 크기 조정, 채널 형식 변경 이미지
+		cv::Mat matDenoised;      // 노이즈 제거 이미지
+		cv::Mat matContrast;      // clahe 기반 부분 영역 대비 보정, 전체 밝기 보정 이미지
+		cv::Mat matPerspective;   // 원근 보정 이미지 - 원근 보정이 실패한 경우 matContrast의 복사본
+		cv::Mat matShadowRemoved; // 불균일 배경 조명 보정, 그림자 완화 보정 이미지
+
+		// 크기 조정, 채널 형식 변경 - 결과 이미지는 matResized
+		if (!ResizeAndConvertColor(matInput, matResized, tOption))
+		{
+			std::cerr << "resize and convert color fail\n";
+			return -2;
+		}
+
+		// 노이즈 감소 - 결과 이미지는 matDenoised
+		if (!RemoveNoise(matResized, matDenoised, tOption))
+		{
+			std::cerr << "노이즈 제거 실패\n";
+			return -3;
+		}
+
+		// clahe 기반 부분 대비 보정, 전체 밝기 감마 보정 - 결과 이미지는 matContrast
+		if (!ApplyClaheAndGamma(matDenoised, matContrast, tOption))
+		{
+			std::cerr << "clahe 및 감마 보정 실패\n";
+			return -4;
+		}
+
+		// 문서 영역 찾기 - 원근 보정을 위해서 경계선, 모서리 꼭지점 찾음
+		// 검출되지 않은 경우 이전 이미지를 그대로 다음 단계로 전달
+		std::vector<cv::Point2f> vDocumentCorner;
+		
+		// 문서 영역 찾기 - 경계선, 모서리 꼭지점 찾음 - 결과는 모서리 좌표 4개
+		DetectDocumentContour(matContrast, vDocumentCorner, tOption);
+
+		// 모서리 4개를 모두 찾으면 원근보정 - 결과 이미지는 matPerspective
+		if (vDocumentCorner.size() == 4)
+		{
+			CorrectPerspective(matContrast, vDocumentCorner, matPerspective);
+		}
+
+		// 모서리 4개를 못찾거나 원근 보정 실패하면 작업 진행을 위해서 대비 밝기 보정 이미지을 다음 단계로 넘김
+		if (matPerspective.empty()) matPerspective = matContrast.clone();
+		
+		// 그림자 보정
+		if (!RemoveShadow(matPerspective, matShadowRemoved, tOption))
+		{
+			std::cerr << "remove shadow fail\n";
+			return -5;
+		}
+
+		// 이진화
+		if (!BinarizeAndSharpen(matShadowRemoved, matOutput, tOption))
+		{
+			std::cerr << "binarize and sharpen fail\n";
+			return -6;
+		}
+
+		if (!matOutput.isContinuous()) matOutput = matOutput.clone();
+
+		return 0;
+	}
+	catch (const cv::Exception& e)
+	{
+		std::cerr << "opencv error=" + std::string(e.what()) << "\n";
+		return -99;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "image process error=" + std::string(e.what()) << "\n";
+		return -98;
+	}
+	catch (...)
+	{
+		std::cerr << "image process unknown error\n";
+		return -97;
+	}
+
+	return 0;
+}
+
 // 이미지 처리 - 파이프라인 구성
-bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption)
+bool ImgProcCore::Process(const std::string& imageFileName, TImgProcResult& tResult, const TImgProcOption& tOption)
 {
 	// 작업 결과 초기화
 	tResult = TImgProcResult();
@@ -16,9 +110,9 @@ bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, 
 	try
 	{
 		cv::Mat matInput;
-		if (!LoadImageFile(csImageFileName, matInput))
+		if (!LoadImageFile(imageFileName, matInput))
 		{
-			tResult.csErrorMessage = _T("이미지 파일을 읽을 수 없습니다.");
+			tResult.csErrorMessage = "이미지 파일을 읽을 수 없습니다.";
 			return false;
 		}
 
@@ -69,11 +163,11 @@ bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, 
 	}
 	catch (const cv::Exception& e)
 	{
-		tResult.csErrorMessage.Format(_T("OpenCV 오류: %S"), e.what());
+		tResult.csErrorMessage = "OpenCV 오류=" + std::string(e.what());
 	}
 	catch (const std::exception& e)
 	{
-		tResult.csErrorMessage.Format(_T("이미지 처리 오류: %S"), e.what());
+		tResult.csErrorMessage = "이미지 처리 오류" + std::string(e.what());
 	}
 
 	tResult.matResult.release();
@@ -81,9 +175,9 @@ bool CImgProc::Process(const CString& csImageFileName, TImgProcResult& tResult, 
 }
 
 // 이미지 처리와 결과 이미지 저장 - 파이프라인 구성 - process 작업에 파일 저장 추가
-bool CImgProc::ProcessAndSave(
-	const CString& csImageFileName,
-	const CString& csSaveFileName,
+bool ImgProcCore::ProcessAndSave(
+	const std::string& imageFileName,
+	const std::string& saveFileName,
 	TImgProcResult& tResult,
 	const TImgProcOption& tOption)
 {
@@ -93,9 +187,9 @@ bool CImgProc::ProcessAndSave(
 	try
 	{
 		cv::Mat matInput;
-		if (!LoadImageFile(csImageFileName, matInput))
+		if (!LoadImageFile(imageFileName, matInput))
 		{
-			tResult.csErrorMessage = _T("이미지 파일을 읽을 수 없습니다.");
+			tResult.csErrorMessage = "이미지 파일을 읽을 수 없습니다.";
 			return false;
 		}
 
@@ -128,7 +222,7 @@ bool CImgProc::ProcessAndSave(
 			throw std::runtime_error("이진화 및 선명화 실패");
 
 		// 결과 이미지를 파일로 저장
-		if (!cv::imwrite(csSaveFileName.GetString(), tResult.matResult))
+		if (!cv::imwrite(saveFileName, tResult.matResult))
 			throw std::runtime_error("결과 파일 저장 실패");
 
 		tResult.bSuccess = true;
@@ -136,18 +230,18 @@ bool CImgProc::ProcessAndSave(
 	}
 	catch (const cv::Exception& e)
 	{
-		tResult.csErrorMessage.Format(_T("OpenCV 오류: %S"), e.what());
+		tResult.csErrorMessage = "OpenCV 오류=" + std::string(e.what());
 	}
 	catch (const std::exception& e)
 	{
-		tResult.csErrorMessage.Format(_T("이미지 처리 오류: %S"), e.what());
+		tResult.csErrorMessage = "이미지 처리 오류=" + std::string(e.what());
 	}
 
 	tResult.matResult.release();
 	return false;
 }
 
-bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
+bool ImgProcCore::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) 
 {
 	if (matSrc.empty() || tOption.nMaxWidth <= 0 || tOption.nMaxHeight <= 0) return false;
 
@@ -188,7 +282,7 @@ bool CImgProc::ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, con
 	else return false;
 }
 
-bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
+bool ImgProcCore::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) 
 {
 	if (matSrc.empty()) return false;
 
@@ -205,7 +299,7 @@ bool CImgProc::RemoveNoise(const cv::Mat& matSrc, cv::Mat& matDst, const TImgPro
 	else return false;
 }
 
-bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
+bool ImgProcCore::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) 
 {
 	if (matSrc.empty() || matSrc.channels() != 3) return false;
 
@@ -250,11 +344,11 @@ bool CImgProc::ApplyClaheAndGamma(const cv::Mat& matSrc, cv::Mat& matDst, const 
 	else return false;
 }
 
-bool CImgProc::DetectDocumentContour(
+bool ImgProcCore::DetectDocumentContour(
 	const cv::Mat& matSrc,
 	cv::Mat& matCanny,
 	std::vector<cv::Point2f>& vecCorners,
-	const TImgProcOption& tOption)
+	const TImgProcOption& tOption) 
 {
 	// 결과값 초기화
 	vecCorners.clear();
@@ -319,7 +413,75 @@ bool CImgProc::DetectDocumentContour(
 	else return false;
 }
 
-bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst)
+bool ImgProcCore::DetectDocumentContour(
+	const cv::Mat& matSrc,
+	std::vector<cv::Point2f>& vecCorners,
+	const TImgProcOption& tOption) 
+{
+	// 결과값 초기화
+	vecCorners.clear();
+
+	if (matSrc.empty()) return false;
+
+	// grayscale 변환 - canny 경계선 검출을 위한 전처리
+	cv::Mat matGray;
+	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
+	else matGray = matSrc;
+
+	// blur 적용 - canny 경계선 검출을 위한 전처리, 미세 노이즈 제거
+	cv::GaussianBlur(matGray, matGray, cv::Size(5, 5), 0.0);
+
+	//canny 경계선 검출 - 밝기 변화가 큰 문서 외곽선, 글자 경계선 검출
+	cv::Mat matCanny;
+	cv::Canny(
+		matGray,
+		matCanny,
+		std::max(0.0, tOption.dCannyThreshold1),
+		std::max(tOption.dCannyThreshold1 + 1.0, tOption.dCannyThreshold2));
+
+	// 끊어진 경계선을 닫힘 연산으로 이어줌 - 문서 외곽선 검출을 위한 보정
+	const cv::Mat matKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+	cv::morphologyEx(matCanny, matCanny, cv::MORPH_CLOSE, matKernel, cv::Point(-1, -1), 2);
+
+	std::vector<std::vector<cv::Point>> vecContours;
+	cv::findContours(matCanny.clone(), vecContours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+	// 너무 작은 영역이 문서로 오검출되지 않도록 영역 크기 최소값 지정
+	const double dImageArea = static_cast<double>(matSrc.cols) * matSrc.rows;
+	const double dMinArea = dImageArea * std::clamp(tOption.dMinDocumentAreaRatio, 0.01, 0.95);
+
+	// 조건을 만족하는 사각형 영역 중에서 가장 크기가 큰 것을 문서 경계선으로 지정
+	double dBestArea = 0.0;
+	std::vector<cv::Point> vecBestCorners;
+
+	for (const auto& vecContour : vecContours)
+	{
+		const double dArea = std::fabs(cv::contourArea(vecContour));
+		if (dArea < dMinArea || dArea <= dBestArea) continue;
+
+		// 꼭지점이 4개인지 검사 - 정밀도는 윤곽선 둘레 2%
+		const double dPerimeter = cv::arcLength(vecContour, true);
+		std::vector<cv::Point> vecApprox;
+		cv::approxPolyDP(vecContour, vecApprox, dPerimeter * 0.02, true);
+
+		// 꼭지점이 4개이고 볼록 사각형인 경우 문서 후보로 지정
+		if (vecApprox.size() == 4 && cv::isContourConvex(vecApprox))
+		{
+			dBestArea = dArea;
+			vecBestCorners = std::move(vecApprox);
+		}
+	}
+
+	if (vecBestCorners.size() != 4) return false;
+
+	// 찾은 꼭지점을 순서대로 정렬 - 좌상, 우상, 우하, 좌하 순서
+	vecCorners = OrderCorners(vecBestCorners);
+
+	if (vecCorners.size() == 4) return true;
+	else return false;
+}
+
+bool ImgProcCore::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst) 
 {
 	if (matSrc.empty() || vecCorners.size() != 4) return false;
 
@@ -358,7 +520,7 @@ bool CImgProc::CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::P
 	else return false;
 }
 
-bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
+bool ImgProcCore::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) 
 {
 	if (matSrc.empty()) return false;
 
@@ -404,7 +566,7 @@ bool CImgProc::RemoveShadow(const cv::Mat& matSrc, cv::Mat& matDst, const TImgPr
 	else return false;
 }
 
-bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption)
+bool ImgProcCore::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption) 
 {
 	if (matSrc.empty()) return false;
 
@@ -439,13 +601,13 @@ bool CImgProc::BinarizeAndSharpen(const cv::Mat& matSrc, cv::Mat& matDst, const 
 	else return false;
 }
 
-bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage)
+bool ImgProcCore::LoadImageFile(const std::string& imageFileName, cv::Mat& matImage) 
 {
 	matImage.release();
-	if (csImageFileName.IsEmpty()) return false;
+	if (imageFileName.empty()) return false;
 
 	std::vector<uchar> vecData;
-	int rt = ReadFileToVecBuf(csImageFileName.GetString(), vecData);
+	int rt = ReadFileToVecBuf(imageFileName, vecData);
 	if (rt == 0)
 	{
 		matImage = cv::imdecode(vecData, cv::IMREAD_UNCHANGED);
@@ -464,7 +626,7 @@ bool CImgProc::LoadImageFile(const CString& csImageFileName, cv::Mat& matImage)
 	return true;
 }
 
-double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc)
+double ImgProcCore::CalculateAutoGamma(const cv::Mat& matSrc) 
 {
 	cv::Mat matGray;
 	if (matSrc.channels() == 3) cv::cvtColor(matSrc, matGray, cv::COLOR_BGR2GRAY);
@@ -476,7 +638,7 @@ double CImgProc::CalculateAutoGamma(const cv::Mat& matSrc)
 	return std::log(0.5) / std::log(dMean);
 }
 
-std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& vecCorners)
+std::vector<cv::Point2f> ImgProcCore::OrderCorners(const std::vector<cv::Point>& vecCorners) 
 {
 	if (vecCorners.size() != 4) return {};
 
@@ -518,7 +680,7 @@ std::vector<cv::Point2f> CImgProc::OrderCorners(const std::vector<cv::Point>& ve
 	return vecOrdered;
 }
 
-int CImgProc::MakeOdd(int nValue, int nMinimum)
+int ImgProcCore::MakeOdd(int nValue, int nMinimum)
 {
 	// morphology 커널에 사용하기 위해서 anchor 중심 픽셀이 있는 홀수 크기로 지정
 	int nResult = std::max(nValue, nMinimum);

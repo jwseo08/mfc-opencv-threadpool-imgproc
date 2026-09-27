@@ -1,5 +1,5 @@
-
-// ImgProcAmpDlg.h: Çì´õ ÆÄÀÏ
+ï»¿
+// ImgProcAmpDlg.h: í—¤ë” íŒŒì¼
 //
 
 #pragma once
@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -21,18 +22,19 @@
 #include "CModRadioBtn.h"
 #include "CModCheckBox.h"
 #include "CThreadProc.h"
-#include "CImgProc.h"
+#include "ImgProcDll.h"
 #include "def.h"
 
 namespace fs = std::filesystem;
 
-// ui µ¿ÀÛ ¸Ş½ÃÁö
-#define UM_PROGRESS_SET_POS    (WM_USER + 1001)
-#define UM_PROGRESS_SET_RANGE  (WM_USER + 1002)
-#define UM_EDIT_LOG_SET_TEXT   (WM_USER + 1003)
-#define UM_STC_WORK_STATUS_SET_TEXT   (WM_USER + 1004)
+// ui ë™ì‘ ë©”ì‹œì§€
+#define UM_PROGRESS_SET_POS    (WM_USER + 1001)         // ì‘ì—… ì§„í–‰ í‘œì‹œ í”„ë¡œê·¸ë˜ìŠ¤ë°” ê°’ ì§€ì •
+#define UM_PROGRESS_SET_RANGE  (WM_USER + 1002)         // ì‘ì—… ì§„í–‰ í‘œì‹œ í”„ë¡œê·¸ë˜ìŠ¤ë°” ë²”ìœ„ ì§€ì •
+#define UM_EDIT_LOG_SET_TEXT   (WM_USER + 1003)         // ë¡œê·¸ í‘œì‹œ ì—ë””íŠ¸ ë°•ìŠ¤ì— í…ìŠ¤íŠ¸ í‘œì‹œ
+#define UM_STC_WORK_STATUS_SET_TEXT   (WM_USER + 1004)  // í”„ë¡œê·¸ë˜ìŠ¤ë°” íƒ€ì´í‹€ í…ìŠ¤íŠ¸ ë³€ê²½ 
+#define UM_IMG_TASK_ENQUEUE_COMPLETED (WM_USER + 1005)  // ì´ë¯¸ì§€ ì‘ì—… í ë“±ë¡ ìŠ¤ë ˆë“œ ì™„ë£Œ ì•Œë¦¼
 
-// ÀÛ¾÷ »óÅÂ
+// ì‘ì—… ìƒíƒœ
 enum EImgProcTaskResult
 {
 	IMG_PROC_SUCCESS = 0,
@@ -40,29 +42,40 @@ enum EImgProcTaskResult
 	IMG_PROC_FAILED = 2
 };
 
+enum class EImgProcInputMode
+{
+	FileName = 0,
+	MatRaw,
+	EncodedImage
+};
+
 // 
 struct TImgProcTaskState
 {
-	// ÀÔ·Â ÆÄÀÏ ÀÌ¸§, Ãâ·Â ÆÄÀÏ ÀÌ¸§, ¿¡·¯ ¸Ş½ÃÁö
-	CString csInputFileName;
-	CString csOutputFileName;
-	CString csErrorMessage;
+	// ì…ë ¥ íŒŒì¼ ì´ë¦„, ì¶œë ¥ íŒŒì¼ ì´ë¦„, ì—ëŸ¬ ë©”ì‹œì§€
+	std::string inputFileName;
+	std::string outputFileName;
+	std::string errorMessage;
 
-	// ÀÛ¾÷ °á°ú
+	// ì‘ì—… ê²°ê³¼
 	bool bSuccess = false;
 	
-	// ÀÛ¾÷ °á°ú ¼ö½Å Ãæµ¹ ¹æÁö - ¾ÈÀüÀåÄ¡
+	// ì‘ì—… ê²°ê³¼ ìˆ˜ì‹  ì¶©ëŒ ë°©ì§€ - ì•ˆì „ì¥ì¹˜
 	std::mutex mutex;
+
+	// ì‘ì—… ê´€ë¦¬ ëª©ë¡ì— ë“±ë¡ë˜ê¸° ì „ì— ì›Œì»¤ê°€ ì²˜ë¦¬ë¥¼ ëë‚´ëŠ” ê²½ìŸ ìƒíƒœë¥¼ ë°©ì§€í•˜ê¸° ìœ„í•œ ë“±ë¡ ì™„ë£Œ ì‹ í˜¸
+	std::condition_variable enqueueCondition;
+	bool bEnqueueRegistered = false;
 };
 
-// ÀÌ¹ÌÁö ÀÛ¾÷ ÀÔ·Â ÆÄÀÏ, Ãâ·Â ÆÄÀÏ
+// ì´ë¯¸ì§€ ì‘ì—… ì…ë ¥ íŒŒì¼, ì¶œë ¥ íŒŒì¼
 const struct TImgProcFile
 {
-	CString pszInput = _T("");
-	CString pszOutput = _T("");
+	std::string input = "";
+	std::string output = "";
 };
 
-// ÀÛ¾÷ ÁØºñ ¾Ë¸² Ã¢ Å¬·¡½º
+// ì‘ì—… ì¤€ë¹„ ì•Œë¦¼ ì°½ í´ë˜ìŠ¤
 class CPrepareNotice : public CWnd
 {
 protected:
@@ -78,126 +91,161 @@ protected:
 	}
 };
 
-// ¸ŞÀÎ ´ÙÀÌ¾ó·Î±×
+// ë©”ì¸ ë‹¤ì´ì–¼ë¡œê·¸
 class CImgProcAmpDlg : public CDialogEx
 {
-// »ı¼ºÀÔ´Ï´Ù.
+// ìƒì„±ì…ë‹ˆë‹¤.
 public:
-	CImgProcAmpDlg(CWnd* pParent = nullptr);	// Ç¥ÁØ »ı¼ºÀÚÀÔ´Ï´Ù.
+	CImgProcAmpDlg(CWnd* pParent = nullptr);	// í‘œì¤€ ìƒì„±ìì…ë‹ˆë‹¤.
 
-// ´ëÈ­ »óÀÚ µ¥ÀÌÅÍÀÔ´Ï´Ù.
+// ëŒ€í™” ìƒì ë°ì´í„°ì…ë‹ˆë‹¤.
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_IMGPROCAMP_DIALOG };
 #endif
 
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV Áö¿øÀÔ´Ï´Ù.
+	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV ì§€ì›ì…ë‹ˆë‹¤.
 
 private:
-	CFormImgList* m_pImgListSrc;	// ¿øº» ÀÌ¹ÌÁö ¸®½ºÆ® ÄÁÆ®·Ñ
-	CFormImgList* m_pImgListDst;    // Ãâ·Â ÀÌ¹ÌÁö ¸®½ºÆ® ÄÁÆ®·Ñ
-	CModiButton m_btnSearchPathSrc; // ¿øº» ÀÌ¹ÌÁö °æ·Î Ã£±â ¹öÆ°
-	CModiButton m_btnClose;         // ÇÁ·Î±×·¥ Á¾·á ¹öÆ°
-	CModiButton m_btnStart;         // ÀÛ¾÷ ½ÃÀÛ ¹öÆ°
-	CModiButton m_btnStop;          // ÀÛ¾÷ ÁßÁö ¹öÆ°
-	CModiButton m_btnLogSave;       // ·Î±× ÀúÀå ¹öÆ°
-	CModRadioBtn m_ctrlRdoSeq;      // ¼øÂ÷ Ã³¸® ¼±ÅÃ ¶óµğ¿À ¹öÆ°
-	CModRadioBtn m_ctrlRdoThp;      // ½º·¹µå Ç® Ã³¸® ¼±ÅÃ ¶óµğ¿À ¹öÆ°
-	CModCheckBox m_ctrlChkOpencvTh; // opencv ½º·¹µå »ç¿ë ¿©ºÎ Ã¼Å© ¹Ú½º
-	CBrush m_BkBrush;               // ´Ù¾Æ¾ó·Î±× ¹è°æ »ö»ó ºê·¯½Ã
+	CFormImgList* m_pImgListSrc;	// ì›ë³¸ ì´ë¯¸ì§€ ë¦¬ìŠ¤íŠ¸ ì»¨íŠ¸ë¡¤
+	CFormImgList* m_pImgListDst;    // ì¶œë ¥ ì´ë¯¸ì§€ ë¦¬ìŠ¤íŠ¸ ì»¨íŠ¸ë¡¤
+	CModiButton m_btnSearchPathSrc; // ì›ë³¸ ì´ë¯¸ì§€ ê²½ë¡œ ì°¾ê¸° ë²„íŠ¼
+	CModiButton m_btnClose;         // í”„ë¡œê·¸ë¨ ì¢…ë£Œ ë²„íŠ¼
+	CModiButton m_btnStart;         // ì‘ì—… ì‹œì‘ ë²„íŠ¼
+	CModiButton m_btnStop;          // ì‘ì—… ì¤‘ì§€ ë²„íŠ¼
+	CModiButton m_btnLogSave;       // ë¡œê·¸ ì €ì¥ ë²„íŠ¼
+	CModRadioBtn m_ctrlRdoSeq;      // ìˆœì°¨ ì²˜ë¦¬ ì„ íƒ ë¼ë””ì˜¤ ë²„íŠ¼
+	CModRadioBtn m_ctrlRdoThp;      // ìŠ¤ë ˆë“œ í’€ ì²˜ë¦¬ ì„ íƒ ë¼ë””ì˜¤ ë²„íŠ¼
+	CModCheckBox m_ctrlChkOpencvTh; // opencv ìŠ¤ë ˆë“œ ì‚¬ìš© ì—¬ë¶€ ì²´í¬ ë°•ìŠ¤
+	CComboBox m_ctrlCmbImgProcMode; // DLL ì´ë¯¸ì§€ ì…ì¶œë ¥ ë°©ì‹ ì„ íƒ ì½¤ë³´ ë°•ìŠ¤
+	CBrush m_BkBrush;               // ë‹¤ì•„ì–¼ë¡œê·¸ ë°°ê²½ ìƒ‰ìƒ ë¸ŒëŸ¬ì‹œ
 
 private:
-	// ÁØºñ Áß ¾Ë¸² Ã¢
+	// ì¤€ë¹„ ì¤‘ ì•Œë¦¼ ì°½
 	CPrepareNotice m_prepareNotice;
 	CStatic m_prepareNoticeText;
-	bool ShowPrepareNotice();
-	void ClosePrepareNotice();
+	bool ShowPrepareNotice();   // ì•Œë¦¼ ì°½ ë³´ì´ê¸°
+	void ClosePrepareNotice();  // ì•Œë¦¼ ì°½ ë‹«ê¸°
 
 private:
-	std::string m_srcPath;   // ¿øº» ÀÌ¹ÌÁö Æú´õ °æ·Î
-	std::string m_dstPath;   // °á°ú ÀÌ¹ÌÁö ÀúÀå Æú´õ °æ·Î
+	std::string m_srcPath;   // ì›ë³¸ ì´ë¯¸ì§€ í´ë” ê²½ë¡œ
+	std::string m_dstPath;   // ê²°ê³¼ ì´ë¯¸ì§€ ì €ì¥ í´ë” ê²½ë¡œ
 
-	std::vector<std::string> m_vSrcImgFileList;   // ÀÌ¹ÌÁö Ã³¸® ´ë»óÀÎ ¿øº» ÀÌ¹ÌÁö ÆÄÀÏ ÀÌ¸§ ¸ñ·Ï
-	std::vector<std::string> m_vDstImgFileList;   // °á°ú ÀÌ¹ÌÁö ÆÄÀÏ ÀÌ¸§ ¸ñ·Ï
+	std::vector<std::string> m_vSrcImgFileList;   // ì´ë¯¸ì§€ ì²˜ë¦¬ ëŒ€ìƒì¸ ì›ë³¸ ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„ ëª©ë¡
+	std::vector<std::string> m_vDstImgFileList;   // ê²°ê³¼ ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„ ëª©ë¡
 
-	WorkMode m_workMode;    // ÀÌ¹ÌÁö Ã³¸® ¸ğµå - ¼øÂ÷Ã³¸®, ½º·¹µå Ç® Ã³¸®
-	int m_opencvTh;         // opencv ³»ºÎ ½º·¹µå »ç¿ë ¿©ºÎ
-	int m_sysThreadNum;     // cpu¿¡¼­ Áö¿øÇÏ´Â ½º·¹µå ¼ö·®
-	int m_workThreadNum;    // ½º·¹µå Ç® ¸ğµå¿¡¼­ »ç¿ëÇÒ ½º·¹µå ¼ö·®
+	WorkMode m_workMode;    // ì´ë¯¸ì§€ ì²˜ë¦¬ ëª¨ë“œ - ìˆœì°¨ì²˜ë¦¬, ìŠ¤ë ˆë“œ í’€ ì²˜ë¦¬
+	int m_opencvTh;         // opencv ë‚´ë¶€ ìŠ¤ë ˆë“œ ì‚¬ìš© ì—¬ë¶€
+	EImgProcInputMode m_imgProcInputMode;
+	int m_sysThreadNum;     // cpuì—ì„œ ì§€ì›í•˜ëŠ” ìŠ¤ë ˆë“œ ìˆ˜ëŸ‰
+	int m_workThreadNum;    // ìŠ¤ë ˆë“œ í’€ ëª¨ë“œì—ì„œ ì‚¬ìš©í•  ìŠ¤ë ˆë“œ ìˆ˜ëŸ‰
 
-	uint32_t m_taskImgFileListSrc;        // ¿øº» ÀÌ¹ÌÁö ÆÄÀÏ ¸ñ·Ï ÀÛ¼º ÀÛ¾÷ ¾ÆÀÌµğ
-	uint32_t m_taskImgFileListDst;        // °á°ú ÀÌ¹ÌÁö ÆÄÀÏ ¸ñ·Ï ÀÛ¼º ÀÛ¾÷ ¾ÆÀÌµğ
-	uint32_t m_taskImgBatchSingleThread;  // ÀÌ¹ÌÁö ¼øÂ÷ Ã³¸® ÀÛ¾÷ ¾ÆÀÌµğ
+	uint32_t m_taskImgFileListSrc;        // ì›ë³¸ ì´ë¯¸ì§€ íŒŒì¼ ëª©ë¡ ì‘ì„± ì‘ì—… ì•„ì´ë””
+	uint32_t m_taskImgFileListDst;        // ê²°ê³¼ ì´ë¯¸ì§€ íŒŒì¼ ëª©ë¡ ì‘ì„± ì‘ì—… ì•„ì´ë””
+	uint32_t m_taskImgBatchSingleThread;  // ì´ë¯¸ì§€ ìˆœì°¨ ì²˜ë¦¬ ì‘ì—… ì•„ì´ë””
 	
-	// ¿É¼Ç¿¡ µû¶ó¼­ ½º·¹µå Ç®¿¡ »ç¿ëÇÒ ½º·¹µå ¼ö ¸®½ºÆ®
+	// ì˜µì…˜ì— ë”°ë¼ì„œ ìŠ¤ë ˆë“œ í’€ì— ì‚¬ìš©í•  ìŠ¤ë ˆë“œ ìˆ˜ ë¦¬ìŠ¤íŠ¸
 	std::vector<unsigned int> m_vWorkThreadNum;
 
 private:
-	// list file and diplay ÇÔ¼ö¸¦ ½º·¹µå·Î ±¸µ¿
+	// list file and diplay í•¨ìˆ˜ë¥¼ ìŠ¤ë ˆë“œë¡œ êµ¬ë™
 	void ListFile(const std::string& path, const int displayImgList);
 	
-	// Æú´õ¿¡ ÀÖ´Â ÀÌ¹ÌÁö ÆÄÀÏ ÀÌ¸§ ¸®½ºÆ®¸¦ ¸¸µé°í ÀÌ¹ÌÁö ¸®½ºÆ® ÄÁÆ®·Ñ¿¡ ·Îµå
+	// í´ë”ì— ìˆëŠ” ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„ ë¦¬ìŠ¤íŠ¸ë¥¼ ë§Œë“¤ê³  ì´ë¯¸ì§€ ë¦¬ìŠ¤íŠ¸ ì»¨íŠ¸ë¡¤ì— ë¡œë“œ
 	int ListFileAndDisplay(const std::string& path, const int displayImgList, const std::atomic<bool>& stopRequest);
 
-	// ÀÛ¾÷ ´Ü°è¿¡ µû¶ó¼­ ÄÁÆ®·Ñ »óÅÂ º¯°æ
+	// ì‘ì—… ë‹¨ê³„ì— ë”°ë¼ì„œ ì»¨íŠ¸ë¡¤ ìƒíƒœ ë³€ê²½
 	void SetCtrlStatus(const WorkStatus& status);
 
 private:
-	CThreadProc m_threadProc; // ÀÏ¹İ ½Ì±Û ½º·¹µå, ½º·¹µå Ç® ±â´É Á¦°ø Å¬·¡½º °´Ã¼
+	CThreadProc m_threadProc; // ì¼ë°˜ ì‹±ê¸€ ìŠ¤ë ˆë“œ, ìŠ¤ë ˆë“œ í’€ ê¸°ëŠ¥ ì œê³µ í´ë˜ìŠ¤ ê°ì²´
+	TImgProcDllFunc m_imgProcDll; // ë™ì ìœ¼ë¡œ ë¡œë“œí•œ ì´ë¯¸ì§€ ì²˜ë¦¬ DLL í•¨ìˆ˜
 	
-	// ½º·¹µå Ç® ÀÛ¾÷ ½Ã °¢°¢ÀÇ ÀÛ¾÷ id¸¦ Å°·Î ÁöÁ¤ÇØ¼­ ÇØ´ç ÀÛ¾÷ÀÇ °á°ú ¼¼ºÎ ³»¿ë °ü¸®
-	std::map<std::uint32_t, std::shared_ptr<TImgProcTaskState>> m_mapImgProcTasks; 
+	// ìŠ¤ë ˆë“œ í’€ ì‘ì—… ì‹œ ê°ê°ì˜ ì‘ì—… idë¥¼ í‚¤ë¡œ ì§€ì •í•´ì„œ í•´ë‹¹ ì‘ì—…ì˜ ê²°ê³¼ ì„¸ë¶€ ë‚´ìš© ê´€ë¦¬
+	std::map<std::uint32_t, std::shared_ptr<TImgProcTaskState>> m_mapImgProcTasks;
+	// ì‘ì—… ë“±ë¡ ìŠ¤ë ˆë“œì™€ UI ë©”ì‹œì§€ ì²˜ë¦¬ í•¨ìˆ˜ê°€ ì‘ì—… ëª©ë¡ì„ ë™ì‹œì— ì ‘ê·¼í•˜ì§€ ì•Šë„ë¡ ë³´í˜¸
+	std::mutex m_imgProcTaskMutex;
 
-	// ½º·¹µå Ç®¿¡ ÀÛ¾÷ ÇÒ´ç
-	bool AddImgProcTask(const CString& csInputFileName,  
-		const CString& csOutputFileName, 
+	// ìŠ¤ë ˆë“œ í’€ì— ì‘ì—… í• ë‹¹
+	bool AddImgProcTask(const std::string& inputFileName,  
+		const std::string& outputFileName,
 		const TImgProcOption& tOption);
-	// ½º·¹µå Ç® »ç¿ë ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷ - ÀÛ¾÷ ½ÃÀÛ
-	void StartImageBatchThreadPool();                   
-	// ½º·¹µå Ç® »ç¿ë ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷ - ½ÇÁ¦ Ã³¸® ÇÔ¼ö
+	
+	// ìŠ¤ë ˆë“œ í’€ ì‚¬ìš© ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—… - ì‘ì—… ì‹œì‘
+	void StartImageBatchThreadPool();   
+
+	// ìŠ¤ë ˆë“œ í’€ ì‘ì—… ë“±ë¡ ì§„í–‰ ë™ì•ˆ UIê°€ ë©ˆì¶”ì§€ ì•Šë„ë¡ ì‘ì—…ì„ íì— ë“±ë¡í•˜ëŠ” ì „ìš© ì‹±ê¸€ ìŠ¤ë ˆë“œì™€ ì‹¤í–‰ í•¨ìˆ˜
+	std::thread m_imgTaskEnqueueThread;
+	std::atomic<bool> m_imgTaskEnqueueStopRequested{ false };
+	void EnqueueImageTasks(std::vector<TImgProcFile> vInOutFileList, TImgProcOption option);
+	void JoinImageTaskEnqueueThread();
+
+	// ìŠ¤ë ˆë“œ í’€ ì‚¬ìš© ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—…
 	int ProcessImgProcTask(std::shared_ptr<TImgProcTaskState> pState, 
 		TImgProcOption tOption, 
 		const std::atomic<bool>& stopRequested);
+	
+	// ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—… - ì‹¤ì œ ì²˜ë¦¬ í•¨ìˆ˜
+	// ë‚´ë¶€ì—ì„œ íŒŒì¼ì´ë¦„ìœ¼ë¡œ ì…ì¶œë ¥ê³¼ cv::Matë¡œ ì…ì¶œë ¥ ë¶„ê¸°
+	int ProcessImageFile(const std::string& csInputFileName,
+		const std::string& csOutputFileName,
+		const TImgProcOption& tOption);
+		
+	//  ProcessImageFileì˜ ì„œë¸Œ í•¨ìˆ˜ - íŒŒì¼ ì´ë¦„ìœ¼ë¡œ ì…ì¶œë ¥
+	int ProcessImageByFileName(const std::string& csInputFileName, 
+		const std::string& csOutputFileName, 
+		const TImgProcOption& tOption);
 
-	// ½Ì±Û ½º·¹µå »ç¿ë ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷ - ½ÇÁ¦ Ã³¸® ÇÔ¼ö
+	//  ProcessImageFileì˜ ì„œë¸Œ í•¨ìˆ˜ - cv::Matë¡œ ì…ì¶œë ¥
+	int ProcessImageByMatRaw(const std::string& csInputFileName,
+		const std::string& csOutputFileName,
+		const TImgProcOption& tOption);
+
+	// ProcessImageFileì˜ ì„œë¸Œ í•¨ìˆ˜ - ì¸ì½”ë”©ëœ ì´ë¯¸ì§€ íŒŒì¼ ë°ì´í„°ë¡œ ì…ì¶œë ¥
+	int ProcessImageByEncodedData(const std::string& csInputFileName,
+		const std::string& csOutputFileName,
+		const TImgProcOption& tOption);
+
+	// ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‚¬ìš© ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—… - ì‘ì—… ì‹œì‘
+	void StartImageBatchThreadSingle();
+
+	// ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‚¬ìš© ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—… - ì‹¤ì œ ì²˜ë¦¬ í•¨ìˆ˜
 	int ImageBatchThreadSingle(std::vector<TImgProcFile> vInOutFileList, 
 		TImgProcOption option, 
 		const std::atomic<bool>& stopRequest);
-	// ½Ì±Û ½º·¹µå »ç¿ë ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷ - ÀÛ¾÷ ½ÃÀÛ
-	void StartImageBatchThreadSingle();
 	
-	// Ã³¸®ÇØ¾ß ÇÏ´Â ÀÛ¾÷ ¼ö·®°ú Ã³¸®°¡ ³¡³­ ÀÛ¾÷ ¼ö·®
-	std::size_t m_nImgTaskSubmitted = 0;
-	std::size_t m_nImgTaskFinished = 0;
+	// ë“±ë¡ ìŠ¤ë ˆë“œì™€ UI ìŠ¤ë ˆë“œì—ì„œ ë™ì‹œì— ì ‘ê·¼í•˜ë¯€ë¡œ ì‘ì—… ìˆ˜ëŸ‰ì„ atomicìœ¼ë¡œ ê´€ë¦¬
+	std::atomic<std::size_t> m_nImgTaskEnqueued{ 0 };
+	std::atomic<std::size_t> m_nImgTaskFinished{ 0 };
 
-	// ½º·¹µå Ç®¿¡ ÀÛ¾÷ µî·Ï ¿Ï·á ¿©ºÎ - true ¸é ÀÛ¾÷ µî·ÏÀÌ ³¡³², ´õ ÀÌ»ó µî·ÏÇÏÁö ¾ÊÀ½
-	bool m_bImgTaskSubmissionCompleted = false;
+	// ìŠ¤ë ˆë“œ í’€ì— ì‘ì—… í ë“±ë¡ ì™„ë£Œ ì—¬ë¶€ - trueë©´ ë” ì´ìƒ ë“±ë¡í•  ì‘ì—…ì´ ì—†ìŒ
+	std::atomic<bool> m_bImgTaskEnqueueCompleted{ false };
 	
-	// ½º·¹µå Ç® µ¿ÀÛ Áß ¿©ºÎ
+	// ìŠ¤ë ˆë“œ í’€ ë™ì‘ ì¤‘ ì—¬ë¶€
 	bool m_bImgBatchRunning = false;
 
-	// ½º·¹µå Ç®¿¡ ÇÒ´çµÈ ÀÛ¾÷ÀÌ ¸ğµÎ ³¡³µ´ÂÁö °Ë»ç
+	// ìŠ¤ë ˆë“œ í’€ì— í• ë‹¹ëœ ì‘ì—…ì´ ëª¨ë‘ ëë‚¬ëŠ”ì§€ ê²€ì‚¬
 	void CheckImgProcBatchCompleted();
 	void OnImgProcTasksCompletedAll();
 
-	// ·Î±× ³»¿ë ±¸¼º
+	// ë¡œê·¸ ë‚´ìš© êµ¬ì„±
 	std::string MakeLog(const double workTime);
 
-	// ½º·¹µå Ç® »ç¿ë ½º·¹µå ¼ö ¿É¼Ç ¼³Á¤
+	// ìŠ¤ë ˆë“œ í’€ ì‚¬ìš© ìŠ¤ë ˆë“œ ìˆ˜ ì˜µì…˜ ì„¤ì •
 	void SetThreadNumOption(CComboBox& ctrlComboBox);
 
 private:
-	std::chrono::steady_clock::time_point m_startTm;  // ÀÛ¾÷ ½ÃÀÛ ½Ã°£ - ÀÛ¾÷½Ã°£ ÃøÁ¤¿ë
-	std::chrono::steady_clock::time_point m_endTm;    // ÀÛ¾÷ Á¾·á ½Ã°£ - ÀÛ¾÷½Ã°£ ÃøÁ¤¿ë
-	std::ostringstream m_ossLogAll; // ÀÛ¾÷ ·Î±× ÁıÇÕ
-	std::string m_logFilePathFile;  // ÀúÀåÇÒ ·Î±× ÆÄÀÏ ÀÌ¸§
+	std::chrono::steady_clock::time_point m_startTm;  // ì‘ì—… ì‹œì‘ ì‹œê°„ - ì‘ì—…ì‹œê°„ ì¸¡ì •ìš©
+	std::chrono::steady_clock::time_point m_endTm;    // ì‘ì—… ì¢…ë£Œ ì‹œê°„ - ì‘ì—…ì‹œê°„ ì¸¡ì •ìš©
+	std::ostringstream m_ossLogAll; // ì‘ì—… ë¡œê·¸ ì§‘í•©
+	std::string m_logFilePathFile;  // ì €ì¥í•  ë¡œê·¸ íŒŒì¼ ì´ë¦„
 
 
-// ±¸ÇöÀÔ´Ï´Ù.
+// êµ¬í˜„ì…ë‹ˆë‹¤.
 protected:
 	HICON m_hIcon;
 
-	// »ı¼ºµÈ ¸Ş½ÃÁö ¸Ê ÇÔ¼ö
+	// ìƒì„±ëœ ë©”ì‹œì§€ ë§µ í•¨ìˆ˜
 	virtual BOOL OnInitDialog();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
@@ -206,36 +254,38 @@ protected:
 public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	
-	CEdit m_ctrlEditPathSrc;      // ¿øº» °æ·Î Ç¥½Ã ¿¡µğÆ® ÄÁÆ®·Ñ
-	CEdit m_ctrlEditLog;          // ·Î±× Ç¥½Ã ¿¡µğÆ® ÄÁÆ®·Ñ
-	CProgressCtrl m_ctrlPrgsWork; // ÀÛ¾÷ ÁøÇà Ç¥½Ã ÇÁ·Î±×·¡½º ¹Ù ÄÁÆ®·Ñ
-	CComboBox m_ctrlCmbThrSet;    // ½º·¹µå ¼ö ¼±ÅÃ ÄŞº¸ ÄÁÆ®·Ñ
+	CEdit m_ctrlEditPathSrc;      // ì›ë³¸ ê²½ë¡œ í‘œì‹œ ì—ë””íŠ¸ ì»¨íŠ¸ë¡¤
+	CEdit m_ctrlEditLog;          // ë¡œê·¸ í‘œì‹œ ì—ë””íŠ¸ ì»¨íŠ¸ë¡¤
+	CProgressCtrl m_ctrlPrgsWork; // ì‘ì—… ì§„í–‰ í‘œì‹œ í”„ë¡œê·¸ë˜ìŠ¤ ë°” ì»¨íŠ¸ë¡¤
+	CComboBox m_ctrlCmbThrSet;    // ìŠ¤ë ˆë“œ ìˆ˜ ì„ íƒ ì½¤ë³´ ì»¨íŠ¸ë¡¤
 	CStatic m_ctrlStcWorkStatus;
 
 	afx_msg void OnDestroy();
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnClose();
 	
-	afx_msg void OnBnClickedBtnSearchSrc();  // ¿øº» ÀÌ¹ÌÁö °æ·Î Ã£±â ¹öÆ° µ¿ÀÛ
-	afx_msg void OnBnClickedBtnStart();      // ÀÌ¹ÌÁö Ã³¸® ½ÃÀÛ ¹öÆ° µ¿ÀÛ
-	afx_msg void OnBnClickedBtnStop();       // ÀÌ¹ÌÁö Ã³¸® ÁßÁö ¹öÆ° µ¿ÀÛ
-	afx_msg void OnBnClickedBtnLogSave();    // ·Î±× ÀúÀå ¹öÆ° µ¿ÀÛ
-	afx_msg void OnBnClickedBtnExit();       // ÇÁ·Î±×·¥ Á¾·á ¹öÆ° µ¿ÀÛ
-	afx_msg void OnBnClickedRadioSeq();      // ¼øÂ÷ Ã³¸® ¼±ÅÃ 
-	afx_msg void OnBnClickedRadioThp();      // ½º·¹µå Ç® Ã³¸® ¼±ÅÃ 
-	afx_msg void OnBnClickedChkOpencvTh();   // opencv ³»ºÎ ½º·¹µå »ç¿ë ¿©ºÎ ¼±ÅÃ
+	afx_msg void OnBnClickedBtnSearchSrc();  // ì›ë³¸ ì´ë¯¸ì§€ ê²½ë¡œ ì°¾ê¸° ë²„íŠ¼ ë™ì‘
+	afx_msg void OnBnClickedBtnStart();      // ì´ë¯¸ì§€ ì²˜ë¦¬ ì‹œì‘ ë²„íŠ¼ ë™ì‘
+	afx_msg void OnBnClickedBtnStop();       // ì´ë¯¸ì§€ ì²˜ë¦¬ ì¤‘ì§€ ë²„íŠ¼ ë™ì‘
+	afx_msg void OnBnClickedBtnLogSave();    // ë¡œê·¸ ì €ì¥ ë²„íŠ¼ ë™ì‘
+	afx_msg void OnBnClickedBtnExit();       // í”„ë¡œê·¸ë¨ ì¢…ë£Œ ë²„íŠ¼ ë™ì‘
+	afx_msg void OnBnClickedRadioSeq();      // ìˆœì°¨ ì²˜ë¦¬ ì„ íƒ 
+	afx_msg void OnBnClickedRadioThp();      // ìŠ¤ë ˆë“œ í’€ ì²˜ë¦¬ ì„ íƒ 
+	afx_msg void OnBnClickedChkOpencvTh();   // opencv ë‚´ë¶€ ìŠ¤ë ˆë“œ ì‚¬ìš© ì—¬ë¶€ ì„ íƒ
+	afx_msg void OnCbnSelchangeImgProcMode(); // DLL ì´ë¯¸ì§€ ì…ì¶œë ¥ ë°©ì‹ ì„ íƒ
 
-	afx_msg LRESULT OnImgProcTaskStarted(WPARAM wParam, LPARAM lParam);    // ½º·¹µå Ç®ÀÇ ÀÛ¾÷ 1°³ ½ÃÀÛ - °¢°¢ÀÇ task¿¡ ´ëÇÑ ¸Ş½ÃÁö
-	afx_msg LRESULT OnImgProcTaskCompleted(WPARAM wParam, LPARAM lParam);  // ½º·¹µå Ç®ÀÇ ÀÛ¾÷ 1°³ ¸¶Ä§ - °¢°¢ÀÇ task¿¡ ´ëÇÑ ¸Ş½ÃÁö
-	afx_msg LRESULT OnImgProcTaskFailed(WPARAM wParam, LPARAM lParam);     // ½º·¹µå Ç®ÀÇ ÀÛ¾÷ 1°³ ½ÇÆĞ - °¢°¢ÀÇ task¿¡ ´ëÇÑ ¸Ş½ÃÁö
-	afx_msg LRESULT OnImgProcIdle(WPARAM wParam, LPARAM lParam);           // ½º·¹µå Ç®¿¡¼­ Ã³¸®ÇÒ ÀÛ¾÷ ¾øÀ½
+	afx_msg LRESULT OnImgProcTaskStarted(WPARAM wParam, LPARAM lParam);    // ìŠ¤ë ˆë“œ í’€ì˜ ì‘ì—… 1ê°œ ì‹œì‘ - ê°ê°ì˜ taskì— ëŒ€í•œ ë©”ì‹œì§€
+	afx_msg LRESULT OnImgProcTaskCompleted(WPARAM wParam, LPARAM lParam);  // ìŠ¤ë ˆë“œ í’€ì˜ ì‘ì—… 1ê°œ ë§ˆì¹¨ - ê°ê°ì˜ taskì— ëŒ€í•œ ë©”ì‹œì§€
+	afx_msg LRESULT OnImgProcTaskFailed(WPARAM wParam, LPARAM lParam);     // ìŠ¤ë ˆë“œ í’€ì˜ ì‘ì—… 1ê°œ ì‹¤íŒ¨ - ê°ê°ì˜ taskì— ëŒ€í•œ ë©”ì‹œì§€
+	afx_msg LRESULT OnImgProcIdle(WPARAM wParam, LPARAM lParam);           // ìŠ¤ë ˆë“œ í’€ì—ì„œ ì²˜ë¦¬í•  ì‘ì—… ì—†ìŒ
+	afx_msg LRESULT OnImgTaskEnqueueCompleted(WPARAM wParam, LPARAM lParam); // ì´ë¯¸ì§€ ì‘ì—… í ë“±ë¡ ìŠ¤ë ˆë“œ ì™„ë£Œ
 
-	afx_msg LRESULT OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam);   // ½Ì±Û ½º·¹µå ÀÛ¾÷ ¸¶Ä§
-	afx_msg LRESULT OnSingleTaskStarted(WPARAM wParam, LPARAM lParam);     // ½Ì±Û ½º·¹µå ÀÛ¾÷ ½ÃÀÛ
-	afx_msg LRESULT OnSingleTaskFailed(WPARAM wParam, LPARAM lParam);      // ½Ì±Û ½º·¹µå ÀÛ¾÷ ½ÇÆĞ
+	afx_msg LRESULT OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam);   // ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—… ë§ˆì¹¨
+	afx_msg LRESULT OnSingleTaskStarted(WPARAM wParam, LPARAM lParam);     // ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—… ì‹œì‘
+	afx_msg LRESULT OnSingleTaskFailed(WPARAM wParam, LPARAM lParam);      // ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—… ì‹¤íŒ¨
 	
-	afx_msg LRESULT OnProgressSetPos(WPARAM wParam, LPARAM lParam);        // ÇÁ·Î±×·¡½º¹Ù °ª ÁöÁ¤
-	afx_msg LRESULT OnProgressSetRange(WPARAM wParam, LPARAM lParam);      // ÇÁ·Î±×·¡½º¹Ù ¹üÀ§ ÁöÁ¤
-	afx_msg LRESULT OnEditLogSetText(WPARAM wParam, LPARAM lParam);        // ·Î±× Ç¥½Ã ÄÁÆ®·Ñ¿¡ ·Î±× Ç¥Ãâ
+	afx_msg LRESULT OnProgressSetPos(WPARAM wParam, LPARAM lParam);        // í”„ë¡œê·¸ë˜ìŠ¤ë°” ê°’ ì§€ì •
+	afx_msg LRESULT OnProgressSetRange(WPARAM wParam, LPARAM lParam);      // í”„ë¡œê·¸ë˜ìŠ¤ë°” ë²”ìœ„ ì§€ì •
+	afx_msg LRESULT OnEditLogSetText(WPARAM wParam, LPARAM lParam);        // ë¡œê·¸ í‘œì‹œ ì»¨íŠ¸ë¡¤ì— ë¡œê·¸ í‘œì¶œ
 
 };

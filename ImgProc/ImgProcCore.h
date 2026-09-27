@@ -1,9 +1,14 @@
 #pragma once
 
-#include <opencv2/opencv.hpp>
+#include <string>
 #include <vector>
+#include <opencv2/opencv.hpp>
+
+// 이미지 처리 옵션 - 전방선언으로 대체
+struct TImgProcOption;
 
 // 이미지 처리 옵션
+/*
 struct TImgProcOption
 {
 	int nMaxWidth = 1600;               // 최대 가로 크기
@@ -26,13 +31,14 @@ struct TImgProcOption
 	double dAdaptiveC = 7.0;            // 이진화 보정 상수 - 주변 가중 평균 기반으로 변경
 	double dSharpenAmount = 1.0;        // unsharp 마스크 강도 - 0.0~3.0 제한
 };
+*/
 
 // 이미지 처리 결과 - 호출마다 초기화
 struct TImgProcResult
 {
 	bool bSuccess = false;              // 전체 처리 성공 여부
 	bool bPerspectiveApplied = false;   // 원근 보정 적용 여부
-	CString csErrorMessage;             // 실패 내용 - 성공 시 empty
+	std::string csErrorMessage;             // 실패 내용 - 성공 시 empty
 
 	cv::Mat matResult;                  // 최종 이진화 이미지 - 8비트 흑백
 	cv::Mat matCanny;                   // 문서 검출용 canny 경계선 이미지
@@ -41,17 +47,20 @@ struct TImgProcResult
 
 // 이미지 처리 클래스
 // 원근 보정, 그림자 제거, 선명화, 이진화
-class CImgProc
+class ImgProcCore
 {
 public:
-	CImgProc() = default;
-	~CImgProc() = default;
+	ImgProcCore() = default;
+	~ImgProcCore() = default;
+
+	// 이미지 처리 - 기본 함수
+	int ProcessMatImg(const cv::Mat& matInput, cv::Mat& matOutput, const TImgProcOption& tOption);
 
 	// 이미지 처리 - 파이프라인 실행
-	bool Process(const CString& csImageFileName, TImgProcResult& tResult, const TImgProcOption& tOption = TImgProcOption());
+	bool Process(const std::string& imageFileName, TImgProcResult& tResult, const TImgProcOption& tOption);
 
 	// 이미지 처리 및 결과 저장 - process 작업에 결과 이미지 파일 저장 추가
-	bool ProcessAndSave(const CString& csImageFileName, const CString& csSaveFileName, TImgProcResult& tResult, const TImgProcOption& tOption);
+	bool ProcessAndSave(const std::string& imageFileName, const std::string& saveFileName, TImgProcResult& tResult, const TImgProcOption& tOption);
 
 	// 이미지 크기 조정, bgr 3채널 변환
 	bool ResizeAndConvertColor(const cv::Mat& matSrc, cv::Mat& matDst, const TImgProcOption& tOption);
@@ -69,6 +78,10 @@ public:
 		std::vector<cv::Point2f>& vecCorners,
 		const TImgProcOption& tOption);
 
+	bool DetectDocumentContour(const cv::Mat& matSrc, 
+		std::vector<cv::Point2f>& vecCorners, 
+		const TImgProcOption& tOption);
+
 	// 원근 보정 - 문서 꼭지점을 직사각형으로 변환
 	bool CorrectPerspective(const cv::Mat& matSrc, const std::vector<cv::Point2f>& vecCorners, cv::Mat& matDst);
 
@@ -80,7 +93,7 @@ public:
 
 private:
 	// 이미지 파일 로드
-	bool LoadImageFile(const CString& csImageFileName, cv::Mat& matImage);
+	bool LoadImageFile(const std::string& imageFileName, cv::Mat& matImage);
 	
 	// 평균 밝기 기준 감마값 계산
 	double CalculateAutoGamma(const cv::Mat& matSrc);

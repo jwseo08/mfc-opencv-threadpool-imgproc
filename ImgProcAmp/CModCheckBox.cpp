@@ -54,7 +54,7 @@ void CModCheckBox::SetBackgroundColor(COLORREF color, BOOL redraw)
 }
 
 int CModCheckBox::GetThemeState(bool disabled, bool pressed,
-    bool hot, int check) const
+    bool hot, int check)
 {
     const bool mixed = check == BST_INDETERMINATE;
     const bool checked = check == BST_CHECKED;

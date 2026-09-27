@@ -191,10 +191,10 @@ public:
 	void SetFontStyle(COLORREF dwFontColor, CString csFontFaceName, int nFontSize, int nTextAlignHorz, int nTextAlignVert);
 	void SetSplitLineStyle(COLORREF dwLineColor, int nLineSize);
 	void SetDisplayStyle(const TDisplayStyle& style, BOOL bRedraw = TRUE);
-	const TDisplayStyle& GetDisplayStyle() const { return m_tDisplayStyle; }
+	const TDisplayStyle& GetDisplayStyle() { return m_tDisplayStyle; }
 	void SetTextColor(COLORREF dwFontColor, COLORREF dwSelectedFontColor, BOOL bRedraw = TRUE);
 	bool SetItemText(int nIndex, const CString& csText, BOOL bRedraw = TRUE);
-	CString GetItemText(int nIndex) const;
+	CString GetItemText(int nIndex);
 	void SetScrollBarColor(COLORREF dwBkColor, COLORREF dwBtnFaceColor, COLORREF dwBtnClickColor,
 		COLORREF dwBtnBorderColor, COLORREF dwBtnArrowColor, COLORREF dwThumbColor,
 		COLORREF dwTrackColor, BOOL bRedraw = TRUE);
@@ -235,7 +235,7 @@ public:
 	int GetImgCount();
 
 	// 화면에 표시되는 이미지 수 반환
-	int GetVisibleItemCount() const { return m_nPartAreaCnt; }
+	int GetVisibleItemCount() { return m_nPartAreaCnt; }
 	
 
 private:

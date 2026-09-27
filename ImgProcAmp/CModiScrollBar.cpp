@@ -112,17 +112,17 @@ void CModiScrollBar::ResetBitmaps()
 	m_pTrackBitImg.reset();
 }
 
-int CModiScrollBar::GetAxisPoint(CPoint point) const
+int CModiScrollBar::GetAxisPoint(CPoint point)
 {
 	return (m_nSbStyle == SB_HORZ) ? point.x : point.y;
 }
 
-int CModiScrollBar::GetRectAxisStart(const CRect& rect) const
+int CModiScrollBar::GetRectAxisStart(const CRect& rect)
 {
 	return (m_nSbStyle == SB_HORZ) ? rect.left : rect.top;
 }
 
-int CModiScrollBar::GetRectAxisEnd(const CRect& rect) const
+int CModiScrollBar::GetRectAxisEnd(const CRect& rect)
 {
 	return (m_nSbStyle == SB_HORZ) ? rect.right : rect.bottom;
 }

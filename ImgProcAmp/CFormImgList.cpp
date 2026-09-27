@@ -18,12 +18,12 @@ namespace
 		if (targetRect.Width() <= 0 || targetRect.Height() <= 0 || imageWidth == 0 || imageHeight == 0)
 			return Gdiplus::Rect(targetRect.left, targetRect.top, 0, 0);
 
-		const double scale = (std::min)(
+		double scale = (std::min)(
 			static_cast<double>(targetRect.Width()) / imageWidth,
 			static_cast<double>(targetRect.Height()) / imageHeight);
 
-		const int width = (std::max)(1, static_cast<int>(imageWidth * scale + 0.5));
-		const int height = (std::max)(1, static_cast<int>(imageHeight * scale + 0.5));
+		int width = (std::max)(1, static_cast<int>(imageWidth * scale + 0.5));
+		int height = (std::max)(1, static_cast<int>(imageHeight * scale + 0.5));
 
 		return Gdiplus::Rect(
 			targetRect.left + (targetRect.Width() - width) / 2,
@@ -33,28 +33,11 @@ namespace
 	}
 }
 
-// 파일 이름 순으로 정렬
-bool compImgInfoPathFile(const TImgInfo& lhs, const TImgInfo& rhs)
-{
-	//return lhs.strName > rhs.strName; // 큰 값 우선
-	//return lhs.szFolderName < rhs.szFolderName;	// 작은 값 우선
-
-	// 작은값 우선 - 윗줄 참고
-	if (lhs.csPathFileName < rhs.csPathFileName)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
 // 해시 함수 정의 - unordered_set에서 사용
 namespace std {
 	template <>
 	struct hash<TImgInfo> {
-		std::size_t operator()(const TImgInfo& d) const {
+		std::size_t operator()(const TImgInfo& d) {
 			return std::hash<string>()(string(d.csPathFileName));  // 파일 전체 경로를 기준으로 해싱
 		}
 	};
@@ -528,7 +511,7 @@ void CFormImgList::SetImgList(const std::vector<std::string>& vImgList, bool red
 			}
 		}
 
-		// 이미지 수량에 따라 이미지 리스트 스크롤 설정
+		// 이미지 수량에 따라 이미지 리스트 스크롤 범위와 이동 스탭 설정
 		SetScrollRangeAndStep((int)m_vecImgInfo.size(), SCROLL_STEP);
 	}
 
@@ -697,7 +680,7 @@ bool CFormImgList::SetItemText(int nIndex, const CString& csText, BOOL bRedraw)
 	return true;
 }
 
-CString CFormImgList::GetItemText(int nIndex) const
+CString CFormImgList::GetItemText(int nIndex)
 {
 	if (nIndex < 0 || nIndex >= (int)m_vecImgInfo.size()) return CString();
 	return m_vecImgInfo[nIndex].csCaption;
@@ -723,7 +706,7 @@ void CFormImgList::OnPaint()
 	GetWindowRect(DestRect);
 	ScreenToClient(DestRect);
 
-	// 메모리 gr 생성 - gdiplus의 Graphics 사용
+	// 메모리 gr 생성 - gdiplus의 Graphics 사용 - 깜빡임 방지
 	Graphics DestGr(dc.GetSafeHdc());
 	Bitmap BackBitImg(DestRect.Width(), DestRect.Height(), &DestGr);
 	Graphics MemGr(&BackBitImg);
@@ -1324,7 +1307,7 @@ void CFormImgList::OnLButtonDblClk(UINT nFlags, CPoint point)
 			BOOL rt = m_pDlgPop->Create(IDD_DLG_POPUP, this);
 			m_pDlgPop->CenterWindow(this);
 			m_pDlgPop->ShowWindow(SW_SHOW);
-			m_pDlgPop->SetDlgSize(600, 800);
+			//m_pDlgPop->SetDlgSize(900, 900); // 팝업 창 자체가 설정하도록 변경
 			m_pDlgPop->SetImgData(tImgInfo.csPathFileName);
 		}
 
@@ -1585,8 +1568,13 @@ void CFormImgList::ResetList()
 {
 	if (m_vecImgInfo.size() > 0)
 	{
-		sort(m_vecImgInfo.begin(), m_vecImgInfo.end(), compImgInfoPathFile);
-		
+		sort(m_vecImgInfo.begin(), m_vecImgInfo.end(), 
+			[](const TImgInfo& a, const TImgInfo& b)
+			{
+				// 파일 이름 순으로 정렬 - 작은값 우선
+				return (a.csPathFileName < b.csPathFileName);
+			} );
+				
 		for (int i = 0; i < m_vecImgInfo.size(); i++)
 		{
 			CString csFileName = GetFileNameFromPathFile(m_vecImgInfo[i].csPathFileName);

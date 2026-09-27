@@ -46,6 +46,7 @@ void RemoveNonNumericAndDot(CString& str);
 bool IsFolderExist(CString csFolderPath);
 bool IsFileExist(CString csPathFile);
 
+std::string ToLowerString(std::string str);
 std::string MakeAbsPath(const std::string& relativePath, bool exist = false);
 bool SelectFolder(HWND hParent, CString& outFolder);
 std::string GetCurrentDateTime(bool formated = false);

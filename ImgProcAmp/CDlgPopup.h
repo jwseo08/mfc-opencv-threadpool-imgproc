@@ -35,7 +35,7 @@ public:
 #endif
 
 private:
-	static const int MAX_DLG_SIZE = 800; // dialog 가로세로 최대 크기
+	static const int MAX_DLG_SIZE = 900; // dialog 가로세로 최대 크기
 
 	int m_nDlgWidth;	// dialog 가로 크기
 	int m_nDlgHeight;   // dialog 세로 크기

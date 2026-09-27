@@ -63,7 +63,7 @@ struct TImgInfo
 	}
 
 	// 파일 이름 비교를 위한 연산자 정의
-	bool operator==(const TImgInfo& other) const
+	bool operator==(const TImgInfo& other)
 	{
 		if (csPathFileName.CompareNoCase(other.csPathFileName) == 0) return true;
 		else return false;

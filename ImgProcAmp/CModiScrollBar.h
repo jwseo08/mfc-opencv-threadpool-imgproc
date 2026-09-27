@@ -92,14 +92,14 @@ private:
 	int m_nTrackClikedPosY;
 
 	void ResetBitmaps();
-	int GetAxisPoint(CPoint point) const;
-	int GetRectAxisStart(const CRect& rect) const;
-	int GetRectAxisEnd(const CRect& rect) const;
+	int GetAxisPoint(CPoint point);
+	int GetRectAxisStart(const CRect& rect);
+	int GetRectAxisEnd(const CRect& rect);
 		
 public:
 	void InitVariable();
 	void SetRange(int nMin, int nMax);
-	int GetScrollBarStyle() const { return m_nSbStyle; }
+	int GetScrollBarStyle() { return m_nSbStyle; }
 	void SetColors(COLORREF dwBkColor, COLORREF dwBtnFaceColor, COLORREF dwBtnClickColor,
 		COLORREF dwBtnBorderColor, COLORREF dwBtnArrowColor, COLORREF dwThumbColor,
 		COLORREF dwTrackColor, BOOL bRedraw = TRUE);

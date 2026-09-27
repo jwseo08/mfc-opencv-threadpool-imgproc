@@ -15,9 +15,9 @@ public:
     void SetDisabledTextColor(COLORREF color, BOOL redraw = TRUE);
     void SetBackgroundColor(COLORREF color, BOOL redraw = TRUE);
 
-    COLORREF GetTextColor() const { return m_textColor; }
-    COLORREF GetDisabledTextColor() const { return m_disabledTextColor; }
-    COLORREF GetBackgroundColor() const { return m_backgroundColor; }
+    COLORREF GetTextColor() { return m_textColor; }
+    COLORREF GetDisabledTextColor() { return m_disabledTextColor; }
+    COLORREF GetBackgroundColor() { return m_backgroundColor; }
 
 protected:
     afx_msg void OnPaint();
@@ -37,7 +37,7 @@ protected:
 
 private:
     void RedrawIfNeeded(BOOL redraw);
-    int GetThemeState(bool disabled, bool pressed, bool hot, int check) const;
+    int GetThemeState(bool disabled, bool pressed, bool hot, int check);
 
     COLORREF m_textColor;
     COLORREF m_disabledTextColor;

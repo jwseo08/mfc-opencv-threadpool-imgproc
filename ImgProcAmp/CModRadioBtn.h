@@ -12,7 +12,7 @@ public:
     void SetTextColor(COLORREF color, BOOL redraw = TRUE);
     void SetDisabledTextColor(COLORREF color, BOOL redraw = TRUE);
     void SetBackgroundColor(COLORREF color, BOOL redraw = TRUE);
-    COLORREF GetTextColor() const noexcept { return m_textColor; }
+    COLORREF GetTextColor() noexcept { return m_textColor; }
 
 protected:
     afx_msg void OnPaint();

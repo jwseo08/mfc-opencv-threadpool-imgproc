@@ -29,7 +29,7 @@ bool CThreadProc::SetThreadCount(std::size_t threadCount)
 	return true;
 }
 
-std::size_t CThreadProc::GetThreadCount() const noexcept
+std::size_t CThreadProc::GetThreadCount() noexcept
 {
 	return m_threadCount;
 }
@@ -132,16 +132,16 @@ std::uint32_t CThreadProc::StartSingleTask(SimpleTask task)
 	if (!task) return 0;
 
 	// SingleTask 형식의 작업 함수를 받아서 스레드 구동
-	Task convertedTask = std::bind(
-		&CThreadProc::RunSimpleTask,
-		this,
-		task,
-		std::placeholders::_1);
+	Task convertedTask =
+		[this, task](const std::atomic<bool>& stopRequested)
+		{
+			return RunSimpleTask(task, stopRequested);
+		};
 
 	return StartSingleTask(convertedTask);
 }
 
-int CThreadProc::RunSimpleTask(SimpleTask function, const std::atomic<bool>&)
+int CThreadProc::RunSimpleTask(SimpleTask function, const std::atomic<bool>& stopRequested)
 {
 	function();
 	return 0;
@@ -163,12 +163,12 @@ void CThreadProc::WaitSingleTask()
 	JoinSingleWorker();
 }
 
-bool CThreadProc::IsSingleTaskRunning() const noexcept
+bool CThreadProc::IsSingleTaskRunning() noexcept
 {
 	return m_singleRunning.load();
 }
 
-bool CThreadProc::IsSingleTaskStopRequested() const noexcept
+bool CThreadProc::IsSingleTaskStopRequested() noexcept
 {
 	return m_singleStopRequested.load();
 }
@@ -201,6 +201,8 @@ void CThreadProc::RequestStop(bool cancelPending)
 	// 스레드 풀을 구성하는 모든 스레드를 종료하기 위해서 모든 스레드 깨움
 	// 대기 상태에서 벗어나야 종료 
 	m_taskCondition.notify_all();
+	// 큐의 빈자리를 기다리며 AddTask에서 대기 중인 호출도 중지 요청 시 즉시 해제
+	m_queueSpaceCondition.notify_all();
 
 	if (firstRequest) PostNotify(WM_CTHREADPROC_STOP_REQUESTED);
 }
@@ -215,12 +217,18 @@ std::uint32_t CThreadProc::AddTask(Task task)
 	// 스레드 풀이 시작되지 않았거나 정지 요청이 들어왔으면 빠져나감
 	if (!task || !m_running.load() || m_stopRequested.load()) return 0;
 
-	std::lock_guard<std::mutex> lock(m_mutex);
+	std::unique_lock<std::mutex> lock(m_mutex);
 
-	// 스레드 풀 동작 여부, 정지 요청 여부, 작업목록의 작업 수량 검사
+	// 작업 큐가 가득 찬 경우 오류로 반환하지 않고, 워커가 작업을 꺼내 빈자리가 생길 때까지 대기
+	// wait 중에는 mutex가 해제되므로 워커 스레드는 계속 큐에서 작업을 가져갈 수 있음
+	m_queueSpaceCondition.wait(lock, [this]()
+		{
+			return !m_running.load() || m_stopRequested.load() || m_tasks.size() < m_maxQueueSize;
+		});
+
+	// 대기 중 풀 종료 또는 중지 요청이 발생한 경우에는 작업을 등록하지 않음
 	if (!m_running.load() ||
-		m_stopRequested.load() || 
-		m_tasks.size() >= m_maxQueueSize) 
+		m_stopRequested.load())
 		return 0;
 
 	// 새로운 작업 아이디 생성 - 기존 작업 아이디 + 1
@@ -247,17 +255,17 @@ std::uint32_t CThreadProc::AddTask(SimpleTask task)
 		});
 }
 
-bool CThreadProc::IsRunning() const noexcept
+bool CThreadProc::IsRunning() noexcept
 {
 	return m_running.load();
 }
 
-bool CThreadProc::IsStopRequested() const noexcept
+bool CThreadProc::IsStopRequested() noexcept
 {
 	return m_stopRequested.load();
 }
 
-std::size_t CThreadProc::GetPendingTaskCount() const
+std::size_t CThreadProc::GetPendingTaskCount()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_tasks.size();
@@ -269,7 +277,7 @@ void CThreadProc::SetNotifyWindow(HWND notifyWindow)
 	m_notifyWindow = notifyWindow;
 }
 
-HWND CThreadProc::GetNotifyWindow() const noexcept
+HWND CThreadProc::GetNotifyWindow() noexcept
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_notifyWindow;
@@ -297,6 +305,9 @@ void CThreadProc::WorkerLoop()
 			m_tasks.pop();
 			++m_activeTaskCount; // task 시작되면 동작 중인 작업 수량 증가 시킴
 		}
+
+		// 워커가 작업 하나를 꺼내 큐에 빈자리가 생겼으므로 대기 중인 AddTask 호출 하나를 깨움
+		m_queueSpaceCondition.notify_one();
 
 		PostNotify(WM_CTHREADPROC_TASK_STARTED, static_cast<WPARAM>(item.id));
 		try
@@ -352,7 +363,7 @@ void CThreadProc::SingleTaskLoop(std::uint32_t taskId, Task task)
 	}
 }
 
-void CThreadProc::PostNotify(UINT msg, WPARAM wParam/*=0*/, LPARAM lParam/*=NULL*/) const
+void CThreadProc::PostNotify(UINT msg, WPARAM wParam/*=0*/, LPARAM lParam/*=NULL*/)
 {
 	HWND notifyWindow = nullptr;
 	{

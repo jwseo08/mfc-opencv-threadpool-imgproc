@@ -18,5 +18,5 @@ for /L %%B in (1,1,9) do (
 )
 
 echo.
-echo done
+echo 100 files copy completed.
 pause

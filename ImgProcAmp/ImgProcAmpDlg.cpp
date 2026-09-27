@@ -1,5 +1,5 @@
-
-// ImgProcAmpDlg.cpp: ±¸Çö ÆÄÀÏ
+ï»¿
+// ImgProcAmpDlg.cpp: êµ¬í˜„ íŒŒì¼
 //
 #include "pch.h"
 #include "framework.h"
@@ -8,30 +8,32 @@
 #include "afxdialogex.h"
 
 #include "CommonUtil.h"
+#include "opencv2/imgcodecs.hpp"
 
-#include <chrono>
+#include <algorithm>
+#include <cctype>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 
-// ÀÀ¿ë ÇÁ·Î±×·¥ Á¤º¸¿¡ »ç¿ëµÇ´Â CAboutDlg ´ëÈ­ »óÀÚÀÔ´Ï´Ù.
+// ì‘ìš© í”„ë¡œê·¸ë¨ ì •ë³´ì— ì‚¬ìš©ë˜ëŠ” CAboutDlg ëŒ€í™” ìƒìì…ë‹ˆë‹¤.
 
 class CAboutDlg : public CDialogEx
 {
 public:
 	CAboutDlg();
 
-// ´ëÈ­ »óÀÚ µ¥ÀÌÅÍÀÔ´Ï´Ù.
+// ëŒ€í™” ìƒì ë°ì´í„°ì…ë‹ˆë‹¤.
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_ABOUTBOX };
 #endif
 
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV Áö¿øÀÔ´Ï´Ù.
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV ì§€ì›ì…ë‹ˆë‹¤.
 
-// ±¸ÇöÀÔ´Ï´Ù.
+// êµ¬í˜„ì…ë‹ˆë‹¤.
 protected:
 	DECLARE_MESSAGE_MAP()
 public:
@@ -51,7 +53,7 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 
-// CImgProcAmpDlg ´ëÈ­ »óÀÚ
+// CImgProcAmpDlg ëŒ€í™” ìƒì
 CImgProcAmpDlg::CImgProcAmpDlg(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_IMGPROCAMP_DIALOG, pParent),
 	m_pImgListSrc(nullptr),
@@ -59,6 +61,7 @@ CImgProcAmpDlg::CImgProcAmpDlg(CWnd* pParent /*=nullptr*/)
 	m_dstPath(""),
 	m_workMode(WorkMode::Sequencial),
 	m_opencvTh(0),
+	m_imgProcInputMode(EImgProcInputMode::FileName),
 	m_taskImgFileListSrc(0),
 	m_taskImgFileListDst(0),
 	m_taskImgBatchSingleThread(0),
@@ -79,6 +82,7 @@ void CImgProcAmpDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_RADIO_SEQ, m_ctrlRdoSeq);
 	DDX_Control(pDX, IDC_RADIO_THP, m_ctrlRdoThp);
 	DDX_Control(pDX, IDC_CHK_OPENCV_TH, m_ctrlChkOpencvTh);
+	DDX_Control(pDX, IDC_CMB_IMG_PROC_MODE, m_ctrlCmbImgProcMode);
 	DDX_Control(pDX, IDC_STC_WORK_STATUS, m_ctrlStcWorkStatus);
 }
 
@@ -97,11 +101,13 @@ BEGIN_MESSAGE_MAP(CImgProcAmpDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_RADIO_SEQ, &CImgProcAmpDlg::OnBnClickedRadioSeq)
 	ON_BN_CLICKED(IDC_RADIO_THP, &CImgProcAmpDlg::OnBnClickedRadioThp)
 	ON_BN_CLICKED(IDC_CHK_OPENCV_TH, &CImgProcAmpDlg::OnBnClickedChkOpencvTh)
+	ON_CBN_SELCHANGE(IDC_CMB_IMG_PROC_MODE, &CImgProcAmpDlg::OnCbnSelchangeImgProcMode)
 
 	ON_MESSAGE(WM_CTHREADPROC_TASK_STARTED, &CImgProcAmpDlg::OnImgProcTaskStarted)
 	ON_MESSAGE(WM_CTHREADPROC_TASK_COMPLETED, &CImgProcAmpDlg::OnImgProcTaskCompleted)
 	ON_MESSAGE(WM_CTHREADPROC_TASK_FAILED, &CImgProcAmpDlg::OnImgProcTaskFailed)
 	ON_MESSAGE(WM_CTHREADPROC_IDLE, &CImgProcAmpDlg::OnImgProcIdle)
+	ON_MESSAGE(UM_IMG_TASK_ENQUEUE_COMPLETED, &CImgProcAmpDlg::OnImgTaskEnqueueCompleted)
 
 	ON_MESSAGE(WM_CTHREADPROC_SINGLE_TASK_STARTED, &CImgProcAmpDlg::OnSingleTaskStarted)
 	ON_MESSAGE(WM_CTHREADPROC_SINGLE_TASK_COMPLETED, &CImgProcAmpDlg::OnSingleTaskCompleted)
@@ -122,18 +128,17 @@ void CImgProcAmpDlg::ListFile(const std::string& path, const int displayImgList)
 	else if (displayImgList == DISP_IMG_LIST_DST) taskId = &m_taskImgFileListDst;
 
 	*taskId = m_threadProc.StartSingleTask(
-			std::bind(
-				&CImgProcAmpDlg::ListFileAndDisplay,
-				this,
-				path,
-				displayImgList,
-				std::placeholders::_1));
+		[this, path, displayImgList](const std::atomic<bool>& stopRequested)
+		{
+			return ListFileAndDisplay(path, displayImgList, stopRequested);
+		}
+	);
 
 	if (*taskId == 0)
 	{
 		ClosePrepareNotice();
 		SetCtrlStatus(WorkStatus::WorkStop);
-		AfxMessageBox(_T("½Ì±Û ÀÛ¾÷À» ½ÃÀÛÇÏÁö ¸øÇß½À´Ï´Ù."));
+		AfxMessageBox(_T("ì‹±ê¸€ ì‘ì—…ì„ ì‹œì‘í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤."));
 	}
 }
 
@@ -178,6 +183,7 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 		m_ctrlRdoSeq.EnableWindow(TRUE);
 		m_ctrlRdoThp.EnableWindow(TRUE);
 		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+		m_ctrlCmbImgProcMode.EnableWindow(TRUE);
 		m_ctrlCmbThrSet.EnableWindow(FALSE);
 
 		m_btnStart.EnableWindow(TRUE);
@@ -192,6 +198,7 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 		m_ctrlRdoSeq.EnableWindow(FALSE);
 		m_ctrlRdoThp.EnableWindow(FALSE);
 		m_ctrlChkOpencvTh.EnableWindow(FALSE);
+		m_ctrlCmbImgProcMode.EnableWindow(FALSE);
 		m_ctrlCmbThrSet.EnableWindow(FALSE);
 
 		m_btnStart.EnableWindow(FALSE);
@@ -205,6 +212,7 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 		m_ctrlRdoSeq.EnableWindow(TRUE);
 		m_ctrlRdoThp.EnableWindow(TRUE);
 		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+		m_ctrlCmbImgProcMode.EnableWindow(TRUE);
 		
 		if (m_ctrlRdoSeq.GetCheck() == 1) m_ctrlCmbThrSet.EnableWindow(FALSE);
 		else m_ctrlCmbThrSet.EnableWindow(TRUE);
@@ -220,6 +228,7 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 		m_ctrlRdoSeq.EnableWindow(TRUE);
 		m_ctrlRdoThp.EnableWindow(TRUE);
 		m_ctrlChkOpencvTh.EnableWindow(TRUE);
+		m_ctrlCmbImgProcMode.EnableWindow(TRUE);
 
 		if (m_ctrlRdoSeq.GetCheck() == 1) m_ctrlCmbThrSet.EnableWindow(FALSE);
 		else m_ctrlCmbThrSet.EnableWindow(TRUE);
@@ -234,14 +243,14 @@ void CImgProcAmpDlg::SetCtrlStatus(const WorkStatus& status)
 }
 
 
-// CImgProcAmpDlg ¸Ş½ÃÁö Ã³¸®±â
+// CImgProcAmpDlg ë©”ì‹œì§€ ì²˜ë¦¬ê¸°
 BOOL CImgProcAmpDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	// ½Ã½ºÅÛ ¸Ş´º¿¡ "Á¤º¸..." ¸Ş´º Ç×¸ñÀ» Ãß°¡ÇÕ´Ï´Ù.
+	// ì‹œìŠ¤í…œ ë©”ë‰´ì— "ì •ë³´..." ë©”ë‰´ í•­ëª©ì„ ì¶”ê°€í•©ë‹ˆë‹¤.
 
-	// IDM_ABOUTBOX´Â ½Ã½ºÅÛ ¸í·É ¹üÀ§¿¡ ÀÖ¾î¾ß ÇÕ´Ï´Ù.
+	// IDM_ABOUTBOXëŠ” ì‹œìŠ¤í…œ ëª…ë ¹ ë²”ìœ„ì— ìˆì–´ì•¼ í•©ë‹ˆë‹¤.
 	ASSERT((IDM_ABOUTBOX & 0xFFF0) == IDM_ABOUTBOX);
 	ASSERT(IDM_ABOUTBOX < 0xF000);
 
@@ -259,14 +268,14 @@ BOOL CImgProcAmpDlg::OnInitDialog()
 		}
 	}
 
-	// ÀÌ ´ëÈ­ »óÀÚÀÇ ¾ÆÀÌÄÜÀ» ¼³Á¤ÇÕ´Ï´Ù.  ÀÀ¿ë ÇÁ·Î±×·¥ÀÇ ÁÖ Ã¢ÀÌ ´ëÈ­ »óÀÚ°¡ ¾Æ´Ò °æ¿ì¿¡´Â
-	//  ÇÁ·¹ÀÓ¿öÅ©°¡ ÀÌ ÀÛ¾÷À» ÀÚµ¿À¸·Î ¼öÇàÇÕ´Ï´Ù.
-	SetIcon(m_hIcon, TRUE);			// Å« ¾ÆÀÌÄÜÀ» ¼³Á¤ÇÕ´Ï´Ù.
-	SetIcon(m_hIcon, FALSE);		// ÀÛÀº ¾ÆÀÌÄÜÀ» ¼³Á¤ÇÕ´Ï´Ù.
+	// ì´ ëŒ€í™” ìƒìì˜ ì•„ì´ì½˜ì„ ì„¤ì •í•©ë‹ˆë‹¤.  ì‘ìš© í”„ë¡œê·¸ë¨ì˜ ì£¼ ì°½ì´ ëŒ€í™” ìƒìê°€ ì•„ë‹ ê²½ìš°ì—ëŠ”
+	//  í”„ë ˆì„ì›Œí¬ê°€ ì´ ì‘ì—…ì„ ìë™ìœ¼ë¡œ ìˆ˜í–‰í•©ë‹ˆë‹¤.
+	SetIcon(m_hIcon, TRUE);			// í° ì•„ì´ì½˜ì„ ì„¤ì •í•©ë‹ˆë‹¤.
+	SetIcon(m_hIcon, FALSE);		// ì‘ì€ ì•„ì´ì½˜ì„ ì„¤ì •í•©ë‹ˆë‹¤.
 
 	//----------------------------------------------------------------------
 	
-	// ui ÄÁÆ®·Ñ »ı¼º
+	// ui ì»¨íŠ¸ë¡¤ ìƒì„±
 	m_pImgListSrc = new CFormImgList(IDD_FORM_BASE, IDD_FORM_BASE, IDC_DUMY_HORZ_IMG_LIST_SRC);
 	m_pImgListSrc->SetDisplayColor(RGB(30, 30, 30), RGB(55, 55, 55), RGB(38, 86, 145));
 	m_pImgListSrc->SetFontStyle(RGB(245, 245, 245), FONT_FACENAME_MALGUN, 12, TEXT_ALIGN_CENTER, TEXT_ALIGN_MIDDLE);
@@ -310,7 +319,7 @@ BOOL CImgProcAmpDlg::OnInitDialog()
 	m_ctrlRdoSeq.SetCheck(BST_CHECKED);
 	m_workMode = WorkMode::Sequencial;
 
-	// ½º·¹µå Ç® »ç¿ë ½º·¹µå ¼ö ¿É¼Ç ¼³Á¤
+	// ìŠ¤ë ˆë“œ í’€ ì‚¬ìš© ìŠ¤ë ˆë“œ ìˆ˜ ì˜µì…˜ ì„¤ì •
 	SetThreadNumOption(m_ctrlCmbThrSet);
 	m_ctrlCmbThrSet.EnableWindow(FALSE);
 
@@ -319,42 +328,66 @@ BOOL CImgProcAmpDlg::OnInitDialog()
 	m_ctrlChkOpencvTh.SetCheck(BST_CHECKED);
 	m_opencvTh = 1;
 
+	m_ctrlCmbImgProcMode.AddString(_T("ì´ë¯¸ì§€ íŒŒì¼ ê²½ë¡œ"));
+	m_ctrlCmbImgProcMode.AddString(_T("cv mat raw ë°ì´í„°"));
+	m_ctrlCmbImgProcMode.AddString(_T("ì´ë¯¸ì§€ encoded ë°ì´í„°"));
+	m_ctrlCmbImgProcMode.SetCurSel(static_cast<int>(EImgProcInputMode::FileName));
+	m_imgProcInputMode = EImgProcInputMode::FileName;
+
 	m_ctrlPrgsWork.SetRange(0, 100);
 	m_ctrlPrgsWork.SetPos(0);
 
 	m_BkBrush.CreateSolidBrush(COLOR_MINT_GRAY);
 
-	// ½º·¹µå °´Ã¼°¡ º¸³»´Â ¸Ş½ÃÁö¸¦ ¼ö½ÅÇÏ´Â ´ë»ó ¼³Á¤
+	// ìŠ¤ë ˆë“œ ê°ì²´ê°€ ë³´ë‚´ëŠ” ë©”ì‹œì§€ë¥¼ ìˆ˜ì‹ í•˜ëŠ” ëŒ€ìƒ ì„¤ì •
 	m_threadProc.SetNotifyWindow(this->GetSafeHwnd());
 
-	// ·Î±× ÆÄÀÏÀÌ¸§ »ı¼º - ÇÁ·Î±×·¥ Æú´õÀÇ log Æú´õ¿¡ »ı¼º, ÇÁ·Î±×·¥ ½ÃÀÛ ½Ã°£À¸·Î ±¸ºĞ
+	// ì‹¤í–‰ íŒŒì¼ê³¼ ê°™ì€ ë””ë ‰í„°ë¦¬ì—ì„œ ì´ë¯¸ì§€ ì²˜ë¦¬ DLL ë¡œë“œ
+	const std::string imgProcDllPath = MakeAbsPath(GetExePath().GetString()) + "/ImgProc.dll";
+	const int loadResult = LoadImgProcDll(imgProcDllPath.c_str(), m_imgProcDll);
+	if (loadResult != 0)
+	{
+		CString errorMessage;
+		errorMessage.Format(_T("ImgProc.dllì„ ë¡œë“œí•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. (ì˜¤ë¥˜=%d)"), loadResult);
+		AfxMessageBox(errorMessage, MB_ICONERROR);
+		EndDialog(IDCANCEL);
+		return FALSE;
+	}
+
+	// ë¡œê·¸ íŒŒì¼ì´ë¦„ ìƒì„± - í”„ë¡œê·¸ë¨ í´ë”ì˜ log í´ë”ì— ìƒì„±, í”„ë¡œê·¸ë¨ ì‹œì‘ ì‹œê°„ìœ¼ë¡œ êµ¬ë¶„
 	std::string logPath = MakeAbsPath(GetExePath().GetString()) + "/log";
 	if (!fs::exists(logPath)) fs::create_directories(logPath);
 	m_logFilePathFile = logPath + "/ImgProcLog-" + GetCurrentDateTime() + ".log";
 
-	// ui ÄÁÆ®·Ñ »óÅÂ ¼³Á¤
+	// ui ì»¨íŠ¸ë¡¤ ìƒíƒœ ì„¤ì •
 	SetCtrlStatus(WorkStatus::AppStart);
 
 	//----------------------------------------------------------------------
 
-	return TRUE;  // Æ÷Ä¿½º¸¦ ÄÁÆ®·Ñ¿¡ ¼³Á¤ÇÏÁö ¾ÊÀ¸¸é TRUE¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
+	return TRUE;  // í¬ì»¤ìŠ¤ë¥¼ ì»¨íŠ¸ë¡¤ì— ì„¤ì •í•˜ì§€ ì•Šìœ¼ë©´ TRUEë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
 }
 
 
 void CImgProcAmpDlg::OnDestroy()
 {
 	ClosePrepareNotice();
-	CDialogEx::OnDestroy();
 
-	//-------------------------------------
-	
-	// ½º·¹µå Á¤¸®
+	// ìœˆë„ìš°ì™€ DLLì„ ì •ë¦¬í•˜ê¸° ì „ì— ë“±ë¡ ìŠ¤ë ˆë“œ ë° ì‘ì—… ìŠ¤ë ˆë“œê°€ ë” ì´ìƒ ê°ì²´ë¥¼ ì‚¬ìš©í•˜ì§€ ì•Šë„ë¡ ì¢…ë£Œ
+	m_imgTaskEnqueueStopRequested.store(true);
 	m_threadProc.SetNotifyWindow(nullptr);
+	m_threadProc.RequestStop(true); // í ê³µê°„ì„ ê¸°ë‹¤ë¦¬ëŠ” EnqueueImageTasksì˜ AddTask í˜¸ì¶œë„ ê¹¨ì›€
+	JoinImageTaskEnqueueThread();
 	m_threadProc.StopSingleTask(true);
 	m_threadProc.Stop(true, true);
-	m_mapImgProcTasks.clear();
+	{
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		m_mapImgProcTasks.clear();
+	}
 
-	// ui ÄÁÆ®·Ñ ¸Ş¸ğ¸® Á¤¸®
+	// ì´ë¯¸ì§€ ì²˜ë¦¬ dll ì–¸ë¡œë“œ
+	FreeImgProcDll(m_imgProcDll);
+
+	// ui ì»¨íŠ¸ë¡¤ ë©”ëª¨ë¦¬ ì •ë¦¬
 	if (m_pImgListSrc != nullptr)
 	{
 		delete m_pImgListSrc;
@@ -368,11 +401,13 @@ void CImgProcAmpDlg::OnDestroy()
 	}
 
 	m_BkBrush.DeleteObject();
+
+	CDialogEx::OnDestroy();
 }
 
 void CImgProcAmpDlg::OnClose()
 {
-	int rt = MessageBox("ÇÁ·Î±×·¥À» Á¾·áÇÏ½Ã°Ú½À´Ï±î?", "¾Ë¸²", MB_YESNO | MB_ICONQUESTION);
+	int rt = MessageBox("í”„ë¡œê·¸ë¨ì„ ì¢…ë£Œí•˜ì‹œê² ìŠµë‹ˆê¹Œ?", "ì•Œë¦¼", MB_YESNO | MB_ICONQUESTION);
 
 	if (rt == IDYES) CDialogEx::OnClose();
 	else return;
@@ -380,13 +415,13 @@ void CImgProcAmpDlg::OnClose()
 
 BOOL CImgProcAmpDlg::PreTranslateMessage(MSG* pMsg)
 {
-	// dialog ´İÈû ¹æÁö
+	// dialog ë‹«í˜ ë°©ì§€
 	if (pMsg->message == WM_KEYDOWN)
 	{
 		if ((pMsg->wParam == VK_RETURN) || (pMsg->wParam == VK_ESCAPE)) return TRUE;
 	}
 
-	// dialog ´İÈû ¹æÁö
+	// dialog ë‹«í˜ ë°©ì§€
 	if (pMsg->message == WM_SYSKEYDOWN)
 	{
 		if (pMsg->wParam == VK_F4) return TRUE;
@@ -408,19 +443,14 @@ void CImgProcAmpDlg::OnSysCommand(UINT nID, LPARAM lParam)
 	}
 }
 
-// ´ëÈ­ »óÀÚ¿¡ ÃÖ¼ÒÈ­ ´ÜÃß¸¦ Ãß°¡ÇÒ °æ¿ì ¾ÆÀÌÄÜÀ» ±×¸®·Á¸é
-//  ¾Æ·¡ ÄÚµå°¡ ÇÊ¿äÇÕ´Ï´Ù.  ¹®¼­/ºä ¸ğµ¨À» »ç¿ëÇÏ´Â MFC ¾ÖÇÃ¸®ÄÉÀÌ¼ÇÀÇ °æ¿ì¿¡´Â
-//  ÇÁ·¹ÀÓ¿öÅ©¿¡¼­ ÀÌ ÀÛ¾÷À» ÀÚµ¿À¸·Î ¼öÇàÇÕ´Ï´Ù.
-
 void CImgProcAmpDlg::OnPaint()
 {
 	if (IsIconic())
 	{
-		CPaintDC dc(this); // ±×¸®±â¸¦ À§ÇÑ µğ¹ÙÀÌ½º ÄÁÅØ½ºÆ®ÀÔ´Ï´Ù.
+		CPaintDC dc(this); 
 
 		SendMessage(WM_ICONERASEBKGND, reinterpret_cast<WPARAM>(dc.GetSafeHdc()), 0);
 
-		// Å¬¶óÀÌ¾ğÆ® »ç°¢Çü¿¡¼­ ¾ÆÀÌÄÜÀ» °¡¿îµ¥¿¡ ¸ÂÃä´Ï´Ù.
 		int cxIcon = GetSystemMetrics(SM_CXICON);
 		int cyIcon = GetSystemMetrics(SM_CYICON);
 		CRect rect;
@@ -428,7 +458,6 @@ void CImgProcAmpDlg::OnPaint()
 		int x = (rect.Width() - cxIcon + 1) / 2;
 		int y = (rect.Height() - cyIcon + 1) / 2;
 
-		// ¾ÆÀÌÄÜÀ» ±×¸³´Ï´Ù.
 		dc.DrawIcon(x, y, m_hIcon);
 	}
 	else
@@ -437,13 +466,10 @@ void CImgProcAmpDlg::OnPaint()
 	}
 }
 
-// »ç¿ëÀÚ°¡ ÃÖ¼ÒÈ­µÈ Ã¢À» ²ô´Â µ¿¾È¿¡ Ä¿¼­°¡ Ç¥½ÃµÇµµ·Ï ½Ã½ºÅÛ¿¡¼­
-//  ÀÌ ÇÔ¼ö¸¦ È£ÃâÇÕ´Ï´Ù.
 HCURSOR CImgProcAmpDlg::OnQueryDragIcon()
 {
 	return static_cast<HCURSOR>(m_hIcon);
 }
-
 
 void CImgProcAmpDlg::OnBnClickedBtnSearchSrc()
 {
@@ -451,8 +477,8 @@ void CImgProcAmpDlg::OnBnClickedBtnSearchSrc()
 	ShowFolderPickerDlg(csPath);
 	if (csPath != "")
 	{
-		m_srcPath = MakeAbsPath(csPath.GetString());        // °æ·Î ¹®ÀÚ¿­ Á¤¸®
-		m_ctrlEditPathSrc.SetWindowText(m_srcPath.c_str()); // ui Ã³¸®
+		m_srcPath = MakeAbsPath(csPath.GetString());        // ê²½ë¡œ ë¬¸ìì—´ ì •ë¦¬
+		m_ctrlEditPathSrc.SetWindowText(m_srcPath.c_str()); // ui ì²˜ë¦¬
 	}
 	else
 	{
@@ -463,14 +489,17 @@ void CImgProcAmpDlg::OnBnClickedBtnSearchSrc()
 bool CImgProcAmpDlg::ShowPrepareNotice()
 {
 	if (::IsWindow(m_prepareNotice.GetSafeHwnd())) return false;
-	const CString className = AfxRegisterWndClass(0,
-		::LoadCursor(nullptr, IDC_WAIT), ::GetSysColorBrush(COLOR_3DFACE));
+
+	const CString className = AfxRegisterWndClass(0, ::LoadCursor(nullptr, IDC_WAIT), ::GetSysColorBrush(COLOR_3DFACE));
+	
 	CRect rect(0, 0, 360, 120);
-	if (!m_prepareNotice.CreateEx(WS_EX_DLGMODALFRAME, className, _T("¾Ë¸²"),
-		WS_POPUP | WS_CAPTION, rect, this, 0)) return false;
+	if (!m_prepareNotice.CreateEx(WS_EX_DLGMODALFRAME, className, _T("ì•Œë¦¼"), WS_POPUP | WS_CAPTION, rect, this, 0)) 
+		return false;
+	
 	m_prepareNotice.GetClientRect(&rect);
 	rect.DeflateRect(12, 12);
-	if (!m_prepareNoticeText.Create(_T("ÀÛ¾÷À» ÁØºñ ÁßÀÔ´Ï´Ù."),
+
+	if (!m_prepareNoticeText.Create(_T("ì‘ì—…ì„ ì¤€ë¹„ ì¤‘ì…ë‹ˆë‹¤."), 
 		WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
 		rect, &m_prepareNotice, 1))
 	{
@@ -481,8 +510,8 @@ bool CImgProcAmpDlg::ShowPrepareNotice()
 	m_prepareNotice.CenterWindow(this);
 	EnableWindow(FALSE);
 	m_prepareNotice.ShowWindow(SW_SHOW);
-	m_prepareNotice.RedrawWindow(nullptr, nullptr,
-		RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	m_prepareNotice.RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	
 	return true;
 }
 
@@ -500,14 +529,14 @@ void CImgProcAmpDlg::OnBnClickedBtnStart()
 	m_ctrlPrgsWork.SetRange(0, 100);
 	m_ctrlPrgsWork.SetPos(0);
 
-	// ¿øº» ÀÌ¹ÌÁö °æ·Î È®ÀÎ
+	// ì›ë³¸ ì´ë¯¸ì§€ ê²½ë¡œ í™•ì¸
 	if (m_srcPath.empty())
 	{
-		MessageBox("¿øº» ÀÌ¹ÌÁö Æú´õ°¡ ÁöÁ¤µÇÁö ¾Ê¾Ò½À´Ï´Ù. °æ·Î¸¦ È®ÀÎÇÏ½Ê½Ã¿À.", "¾Ë¸²", MB_OK | MB_ICONERROR);
+		MessageBox("ì›ë³¸ ì´ë¯¸ì§€ í´ë”ê°€ ì§€ì •ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤. ê²½ë¡œë¥¼ í™•ì¸í•˜ì‹­ì‹œì˜¤.", "ì•Œë¦¼", MB_OK | MB_ICONERROR);
 		return;
 	}
 	
-	MessageBox("°á°ú ÀúÀåÀ» À§ÇØ¼­ ¿øº» ÀÌ¹ÌÁö Æú´õ¿¡ output-[ÇöÀç½Ã°£] Æú´õ¸¦ »ı¼ºÇÕ´Ï´Ù.", "¾Ë¸²", MB_OK | MB_ICONINFORMATION);
+	MessageBox("ê²°ê³¼ ì €ì¥ì„ ìœ„í•´ì„œ ì›ë³¸ ì´ë¯¸ì§€ í´ë”ì— output-[í˜„ì¬ì‹œê°„] í´ë”ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.", "ì•Œë¦¼", MB_OK | MB_ICONINFORMATION);
 	m_dstPath = MakeDirByDateTime(m_srcPath, "output");
 	
 	if (!m_srcPath.empty() && !m_dstPath.empty())
@@ -525,7 +554,7 @@ void CImgProcAmpDlg::OnBnClickedBtnStart()
 		m_vDstImgFileList.clear();
 		m_pImgListDst->ClearImgInfoList(true);
 
-		// ÀÛ¾÷ ´ë»ó ¿øº» ÀÌ¹ÌÁö ¸ñ·Ï ¸¸µé±â - ÈÄ¼Ó ÀÛ¾÷Àº ½º·¹µå ¿Ï·á ¸Ş½ÃÁö¿¡ µû¶ó¼­ ÁøÇà
+		// ì‘ì—… ëŒ€ìƒ ì›ë³¸ ì´ë¯¸ì§€ ëª©ë¡ ë§Œë“¤ê¸° - í›„ì† ì‘ì—…ì€ ìŠ¤ë ˆë“œ ì™„ë£Œ ë©”ì‹œì§€ì— ë”°ë¼ì„œ ì§„í–‰
 		ListFile(m_srcPath, DISP_IMG_LIST_SRC);
 	}
 	else
@@ -537,27 +566,33 @@ void CImgProcAmpDlg::OnBnClickedBtnStart()
 void CImgProcAmpDlg::OnBnClickedBtnStop()
 {
 	ClosePrepareNotice();
-	// ½Ì±Û ½º·¹µå ÀÛ¾÷°ú ½º·¹µå Ç® ÀÛ¾÷ »ó°ü¾øÀÌ ÁßÁö ¿äÃ» Àü´Ş
+	// ì‘ì—… ë“±ë¡ ìŠ¤ë ˆë“œì— ë¨¼ì € ì¤‘ì§€ë¥¼ ì•Œë¦¬ê³ , AddTask ëŒ€ê¸°ë¥¼ í•´ì œí•˜ê¸° ìœ„í•´ ìŠ¤ë ˆë“œ í’€ì—ë„ ì¤‘ì§€ ìš”ì²­ ì „ë‹¬
+	m_imgTaskEnqueueStopRequested.store(true);
 	m_threadProc.RequestSingleTaskStop();
 	m_threadProc.RequestStop(true);
+	JoinImageTaskEnqueueThread();
 
-	// ÀÛ¾÷ ½º·¹µå°¡ ÀÌ¹Ì PostMessageÇÑ ¿Ï·á ¸Ş½ÃÁö°¡ ³ªÁß¿¡ Ã³¸®µÇ´õ¶óµµ
-	// Ãë¼ÒµÈ ÀÛ¾÷ÀÇ ÈÄ¼Ó Ã³¸®¸¦ ÇÏÁö ¾Êµµ·Ï ¿¬°ü º¯¼ö ÃÊ±âÈ­
+	// ì‹¤í–‰ ì¤‘ì¸ ì²˜ë¦¬ í•¨ìˆ˜ê°€ ì™„ë£Œë  ë•Œê¹Œì§€ ê¸°ë‹¤ë¦° ë’¤ ìŠ¤ë ˆë“œ ì •ë¦¬
+	m_threadProc.StopSingleTask(true);
+	m_threadProc.Stop(true, true);
+
+	// ì‘ì—… ìŠ¤ë ˆë“œê°€ ì´ë¯¸ PostMessageí•œ ì™„ë£Œ ë©”ì‹œì§€ê°€ ë‚˜ì¤‘ì— ì²˜ë¦¬ë˜ë”ë¼ë„
+	// ì·¨ì†Œëœ ì‘ì—…ì˜ í›„ì† ì²˜ë¦¬ë¥¼ í•˜ì§€ ì•Šë„ë¡ ì—°ê´€ ë³€ìˆ˜ ì´ˆê¸°í™”
 	m_taskImgFileListSrc = 0;
 	m_taskImgFileListDst = 0;
 	m_taskImgBatchSingleThread = 0;
 
 	m_bImgBatchRunning = false;
-	m_bImgTaskSubmissionCompleted = false;
-	m_mapImgProcTasks.clear();  // ÀÛ¾÷ °ü¸® ¸ñ·Ï ºñ¿ì±â
-	m_nImgTaskSubmitted = 0;
-	m_nImgTaskFinished = 0;
+	m_bImgTaskEnqueueCompleted.store(false);
+	{
+		// ë“±ë¡ ë° ì™„ë£Œ ìŠ¤ë ˆë“œê°€ ëª¨ë‘ ëë‚œ ë’¤ ì‘ì—… ê´€ë¦¬ ëª©ë¡ì„ ì•ˆì „í•˜ê²Œ ë¹„ì›€
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		m_mapImgProcTasks.clear();
+	}
+	m_nImgTaskEnqueued.store(0);
+	m_nImgTaskFinished.store(0);
 
-	// ½ÇÇà ÁßÀÎ Ã³¸® ÇÔ¼ö°¡ ¿Ï·áµÉ ¶§±îÁö ±â´Ù¸° µÚ ½º·¹µå Á¤¸®
-	m_threadProc.StopSingleTask(true);
-	m_threadProc.Stop(true, true);
-
-	MessageBox("ÀÛ¾÷ÀÌ Ãë¼ÒµÇ¾ú½À´Ï´Ù.", "¾Ë¸²", MB_OK | MB_ICONINFORMATION);
+	MessageBox("ì‘ì—…ì´ ì·¨ì†Œë˜ì—ˆìŠµë‹ˆë‹¤.", "ì•Œë¦¼", MB_OK | MB_ICONINFORMATION);
 
 	SetCtrlStatus(WorkStatus::WorkStop);
 }
@@ -569,17 +604,17 @@ void CImgProcAmpDlg::OnBnClickedBtnExit()
 
 void CImgProcAmpDlg::OnBnClickedBtnLogSave()
 {
-	// ·Î±× ÆÄÀÏ ÀúÀå
+	// ë¡œê·¸ íŒŒì¼ ì €ì¥
 	int rt = SaveLog(m_logFilePathFile, m_ossLogAll);
 
 	if (rt == 0)
 	{
-		std::string msg = "·Î±× ÆÄÀÏÀÌ ÀúÀåµÇ¾ú½À´Ï´Ù.\r\n" + std::string("ÆÄÀÏ À§Ä¡ : ") + m_logFilePathFile;
-		MessageBox(msg.c_str(), "¾Ë¸²", MB_OK | MB_ICONINFORMATION);
+		std::string msg = "ë¡œê·¸ íŒŒì¼ì´ ì €ì¥ë˜ì—ˆìŠµë‹ˆë‹¤.\r\n" + std::string("íŒŒì¼ ìœ„ì¹˜ : ") + m_logFilePathFile;
+		MessageBox(msg.c_str(), "ì•Œë¦¼", MB_OK | MB_ICONINFORMATION);
 	}
 	else
 	{
-		MessageBox("·Î±× ÆÄÀÏÀ» ÀúÀåÇÒ ¼ö ¾ø½À´Ï´Ù.", "¾Ë¸²", MB_OK | MB_ICONERROR);
+		MessageBox("ë¡œê·¸ íŒŒì¼ì„ ì €ì¥í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.", "ì•Œë¦¼", MB_OK | MB_ICONERROR);
 	}
 }
 
@@ -598,6 +633,16 @@ void CImgProcAmpDlg::OnBnClickedChkOpencvTh()
 	m_opencvTh = m_ctrlChkOpencvTh.GetCheck();
 
 	std::cout << "opencv internal thread=" << m_opencvTh << std::endl;
+}
+
+void CImgProcAmpDlg::OnCbnSelchangeImgProcMode()
+{
+	const int selectedIndex = m_ctrlCmbImgProcMode.GetCurSel();
+	if (selectedIndex >= static_cast<int>(EImgProcInputMode::FileName) &&
+		selectedIndex <= static_cast<int>(EImgProcInputMode::EncodedImage))
+	{
+		m_imgProcInputMode = static_cast<EImgProcInputMode>(selectedIndex);
+	}
 }
 
 
@@ -643,58 +688,70 @@ HBRUSH CImgProcAmpDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 LRESULT CImgProcAmpDlg::OnImgProcTaskStarted(WPARAM wParam, LPARAM lParam)
 {
-	if (m_mapImgProcTasks.find(static_cast<std::uint32_t>(wParam)) != m_mapImgProcTasks.end())
-		ClosePrepareNotice();
 	const std::uint32_t nTaskId = static_cast<std::uint32_t>(wParam);
+	std::string inputFileName;
+	ClosePrepareNotice();
 
-	auto it = m_mapImgProcTasks.find(nTaskId);
+	{
+		// EnqueueImageTasksì˜ ì‘ì—… ëª©ë¡ ë“±ë¡ê³¼ ë™ì‹œì— ì ‘ê·¼í•  ìˆ˜ ìˆìœ¼ë¯€ë¡œ mutexë¡œ ë³´í˜¸
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		auto it = m_mapImgProcTasks.find(nTaskId);
+		if (it != m_mapImgProcTasks.end()) inputFileName = it->second->inputFileName;
+	}
 
-	if (it != m_mapImgProcTasks.end())
-		std::cout << "ÀÌ¹ÌÁö Ã³¸® ½ÃÀÛ " << nTaskId << " " << it->second->csInputFileName.GetString() << std::endl;
+	if (!inputFileName.empty())
+	{
+		std::cout << "ì´ë¯¸ì§€ ì²˜ë¦¬ ì‹œì‘ " << nTaskId << " " << inputFileName << std::endl;
+	}
 
 	return 0;
 }
 
 LRESULT CImgProcAmpDlg::OnImgProcTaskCompleted(WPARAM wParam, LPARAM lParam)
 {
-	uint32_t nTaskId = (uint32_t)wParam;      // ÀÛ¾÷ÀÌ ¿Ï·áµÈ ÀÛ¾÷ÀÇ id
-	int nResult = static_cast<int>(lParam);   // ÀÛ¾÷ °á°ú - ÀÛ¾÷ÇÔ¼ö ¸®ÅÏ°ª
+	uint32_t nTaskId = (uint32_t)wParam;      // ì‘ì—…ì´ ì™„ë£Œëœ ì‘ì—…ì˜ id
+	int nResult = static_cast<int>(lParam);   // ì‘ì—… ê²°ê³¼ - ì‘ì—…í•¨ìˆ˜ ë¦¬í„´ê°’
 
-	// ÀÛ¾÷ °ü¸® ¸ñ·Ï¿¡¼­ ÇØ´ç ÀÛ¾÷ÀÇ id¸¦ Å°·Î »ç¿ëÇØ¼­ ÀÛ¾÷ ³»¿ë Ã£À½
-	auto it = m_mapImgProcTasks.find(nTaskId);
-	if (it == m_mapImgProcTasks.end())
+	std::shared_ptr<TImgProcTaskState> pState;
 	{
-		std::cout << "ÀÛ¾÷ ³»¿ë Ã£À» ¼ö ¾øÀ½. ÀÛ¾÷ id=" << nTaskId << std::endl;
+		// ë“±ë¡ ìŠ¤ë ˆë“œì™€ì˜ map ì ‘ê·¼ ì¶©ëŒì„ ë§‰ê³  ì™„ë£Œëœ ì‘ì—…ì„ ëª©ë¡ì—ì„œ ì œê±°
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		auto it = m_mapImgProcTasks.find(nTaskId);
+		if (it != m_mapImgProcTasks.end())
+		{
+			pState = it->second;
+			m_mapImgProcTasks.erase(it);
+		}
+	}
+
+	if (!pState)
+	{
+		std::cout << "ì‘ì—… ë‚´ìš© ì°¾ì„ ìˆ˜ ì—†ìŒ. ì‘ì—… id=" << nTaskId << std::endl;
 		return 0;
 	}
 
-	// ¸ñ·Ï¿¡¼­ ÇØ´ç ÀÛ¾÷ Ã£À¸¸é ÀÛ¾÷ ³»¿ë °¡Á®¿È
-	const std::shared_ptr<TImgProcTaskState> pState = it->second;
-
-	// °á°ú ³»¿ë¿¡ µû¶ó¼­ ÇÊ¿äÇÑ Ã³¸® ÁøÇà
+	// ê²°ê³¼ ë‚´ìš©ì— ë”°ë¼ì„œ í•„ìš”í•œ ì²˜ë¦¬ ì§„í–‰
 	if (nResult == IMG_PROC_SUCCESS)
 	{
-		std::cout << "ÀÌ¹ÌÁö Ã³¸® ¿Ï·á " << nTaskId << " "
-			<< pState->csOutputFileName.GetString() << std::endl;
+		std::cout << "ì´ë¯¸ì§€ ì²˜ë¦¬ ì™„ë£Œ " << nTaskId << " "
+			<< pState->outputFileName << std::endl;
 	}
 	else if (nResult == IMG_PROC_CANCELLED)
 	{
-		std::cout << "ÀÌ¹ÌÁö Ã³¸® Ãë¼Ò " << nTaskId << std::endl;
+		std::cout << "ì´ë¯¸ì§€ ì²˜ë¦¬ ì·¨ì†Œ " << nTaskId << std::endl;
 	}
 	else
 	{
-		std::cout << "ÀÌ¹ÌÁö Ã³¸® ½ÇÆĞ " << nTaskId << " "
-			<< pState->csErrorMessage.GetString() << std::endl;;
+		std::cout << "ì´ë¯¸ì§€ ì²˜ë¦¬ ì‹¤íŒ¨ " << nTaskId << " "
+			<< pState->errorMessage << std::endl;;
 	}
 
-	// ³¡³­ ÀÛ¾÷Àº ¸ñ·Ï¿¡¼­ »èÁ¦
-	m_mapImgProcTasks.erase(it);
-	++m_nImgTaskFinished;
+	const std::size_t finishedCount = m_nImgTaskFinished.fetch_add(1) + 1;
 
-	// ui µ¿ÀÛ - ÇÁ·Î±×·¡½º¹Ù
-	PostMessage(UM_PROGRESS_SET_POS, (WPARAM)m_nImgTaskFinished, NULL);
+	// ui ë™ì‘ - í”„ë¡œê·¸ë˜ìŠ¤ë°”
+	PostMessage(UM_PROGRESS_SET_POS, static_cast<WPARAM>(finishedCount), NULL);
 
-	// ½º·¹µå Ç®ÀÇ ¸ğµç ÀÛ¾÷ÀÌ ³¡³µ´ÂÁö °Ë»ç
+	// ìŠ¤ë ˆë“œ í’€ì˜ ëª¨ë“  ì‘ì—…ì´ ëë‚¬ëŠ”ì§€ ê²€ì‚¬
 	CheckImgProcBatchCompleted();
 
 	return 0;
@@ -702,26 +759,33 @@ LRESULT CImgProcAmpDlg::OnImgProcTaskCompleted(WPARAM wParam, LPARAM lParam)
 
 LRESULT CImgProcAmpDlg::OnImgProcTaskFailed(WPARAM wParam, LPARAM lParam)
 {
-	// ½ÇÆĞÇÑ ÀÛ¾÷ id ¹ŞÀ½
+	// ì‹¤íŒ¨í•œ ì‘ì—… id ë°›ìŒ
 	const std::uint32_t nTaskId = static_cast<std::uint32_t>(wParam);
 
-	// ÀÛ¾÷ ¸ñ·Ï¿¡¼­ °á°ú ³»¿ë Ã£À½
-	auto it = m_mapImgProcTasks.find(nTaskId);
-
-	if (it != m_mapImgProcTasks.end())
+	std::shared_ptr<TImgProcTaskState> pState;
 	{
-		std::cerr << "ÀÌ¹ÌÁö Ã³¸® Áß ¿¹¿Ü ¹ß»ı id, file=" 
-			<< nTaskId << "," << it->second->csInputFileName.GetString() << "\n";
-
-		// ÀÛ¾÷ ¸ñ·Ï¿¡¼­ ÇØ´ç ÀÛ¾÷ Á¦°ÅÇÏ°í ¿Ï·áµÈ ÀÛ¾÷ ¼ö·® Áõ°¡½ÃÅ´
-		m_mapImgProcTasks.erase(it);
-		++m_nImgTaskFinished;
-
-		// ui Ã³¸® - ÇÁ·Î±×·¡½º¹Ù 
-		PostMessage(UM_PROGRESS_SET_POS, (WPARAM)m_nImgTaskFinished, NULL);
+		// ë“±ë¡ ìŠ¤ë ˆë“œì™€ì˜ map ì ‘ê·¼ ì¶©ëŒì„ ë§‰ê³  ì˜ˆì™¸ê°€ ë°œìƒí•œ ì‘ì—…ì„ ëª©ë¡ì—ì„œ ì œê±°
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		auto it = m_mapImgProcTasks.find(nTaskId);
+		if (it != m_mapImgProcTasks.end())
+		{
+			pState = it->second;
+			m_mapImgProcTasks.erase(it);
+		}
 	}
 
-	// ¸ğµç ÀÛ¾÷ ³¡³µ´ÂÁö °Ë»ç
+	if (pState)
+	{
+		std::cerr << "ì´ë¯¸ì§€ ì²˜ë¦¬ ì¤‘ ì˜ˆì™¸ ë°œìƒ id, file=" 
+			<< nTaskId << "," << pState->inputFileName << "\n";
+
+		const std::size_t finishedCount = m_nImgTaskFinished.fetch_add(1) + 1;
+
+		// ui ì²˜ë¦¬ - í”„ë¡œê·¸ë˜ìŠ¤ë°” 
+		PostMessage(UM_PROGRESS_SET_POS, static_cast<WPARAM>(finishedCount), NULL);
+	}
+
+	// ëª¨ë“  ì‘ì—… ëë‚¬ëŠ”ì§€ ê²€ì‚¬
 	CheckImgProcBatchCompleted();
 
 	return 0;
@@ -729,12 +793,25 @@ LRESULT CImgProcAmpDlg::OnImgProcTaskFailed(WPARAM wParam, LPARAM lParam)
 
 LRESULT CImgProcAmpDlg::OnImgProcIdle(WPARAM wParam, LPARAM lParam)
 {
-	std::cout << "¸ğµç ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷ÀÌ ¿Ï·áµÇ¾ú½À´Ï´Ù." << std::endl;
+	std::cout << "ëª¨ë“  ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—…ì´ ì™„ë£Œë˜ì—ˆìŠµë‹ˆë‹¤." << std::endl;
 	
-	// ÁøÇà Ç¥½Ã Á¾·á
-	// ¿Ï·á ¹öÆ° È°¼ºÈ­
-	// °á°ú ¸ñ·Ï °»½Å
+	// ì§„í–‰ í‘œì‹œ ì¢…ë£Œ
+	// ì™„ë£Œ ë²„íŠ¼ í™œì„±í™”
+	// ê²°ê³¼ ëª©ë¡ ê°±ì‹ 
 
+	return 0;
+}
+
+LRESULT CImgProcAmpDlg::OnImgTaskEnqueueCompleted(WPARAM wParam, LPARAM lParam)
+{
+	// ì‘ì—… ë“±ë¡ì´ ëë‚˜ë©´ ë“±ë¡ìš© ìŠ¤ë ˆë“œ join - ë“±ë¡ ì™„ë£Œ ìƒíƒœ í™•ì •
+	JoinImageTaskEnqueueThread();
+
+	// ì „ì²´ ì‘ì—… ì¤‘ì§€ ì²˜ë¦¬ ì¤‘ì—ëŠ” ë‚¨ì•„ ìˆëŠ” ì™„ë£Œ ë©”ì‹œì§€ë¡œ í›„ì† ì‘ì—…ì„ ì‹œì‘í•˜ì§€ ì•ŠìŒ
+	if (!m_bImgBatchRunning) return 0;
+
+	m_bImgTaskEnqueueCompleted = true;
+	CheckImgProcBatchCompleted();
 	return 0;
 }
 
@@ -742,17 +819,28 @@ int CImgProcAmpDlg::ProcessImgProcTask(std::shared_ptr<TImgProcTaskState> pState
 {
 	if (stopRequested == true) return IMG_PROC_CANCELLED;
 
-	CImgProc imgProc;
-	TImgProcResult result;
+	{
+		// AddTask ì§í›„ ì‘ì—…ì´ ë°”ë¡œ ì‹œì‘ë˜ì–´ë„ ê´€ë¦¬ map ë“±ë¡ì´ ëë‚œ ë’¤ ì²˜ë¦¬í•˜ë„ë¡ ëŒ€ê¸°
+		std::unique_lock<std::mutex> lock(pState->mutex);
+		pState->enqueueCondition.wait(lock, [&pState, &stopRequested]()
+			{
+				return pState->bEnqueueRegistered || stopRequested.load();
+			});
+		if (!pState->bEnqueueRegistered || stopRequested.load()) return IMG_PROC_CANCELLED;
+	}
 
-	// ÀÌ¹ÌÁö Ã³¸®¿Í °á°ú ÆÄÀÏ ÀúÀå
-	const bool bSuccess = imgProc.ProcessAndSave(pState->csInputFileName, pState->csOutputFileName, result, tOption);
+	// ì´ë¯¸ì§€ ì²˜ë¦¬ì™€ ê²°ê³¼ íŒŒì¼ ì €ì¥
+	int processResult = ProcessImageFile(pState->inputFileName, pState->outputFileName, tOption);
+	bool bSuccess = (processResult == 0);
 	{
 		std::lock_guard<std::mutex> lock(pState->mutex);
 
-		// °á°ú ±â·Ï
+		// ê²°ê³¼ ê¸°ë¡
 		pState->bSuccess = bSuccess;
-		pState->csErrorMessage = result.csErrorMessage;
+		if (!bSuccess)
+		{
+			pState->errorMessage = "ImgProc.dll ì´ë¯¸ì§€ ì²˜ë¦¬ ì‹¤íŒ¨. ì˜¤ë¥˜=" + std::to_string(processResult);
+		}
 
 		if (!bSuccess) std::cerr << "img proc process and save fail\n";
 	}
@@ -761,53 +849,255 @@ int CImgProcAmpDlg::ProcessImgProcTask(std::shared_ptr<TImgProcTaskState> pState
 	return IMG_PROC_FAILED;
 }
 
-
-bool CImgProcAmpDlg::AddImgProcTask(const CString& csInputFileName, const CString& csOutputFileName, const TImgProcOption& tOption)
+int CImgProcAmpDlg::ProcessImageFile(const std::string& csInputFileName, 
+	const std::string& csOutputFileName, 
+	const TImgProcOption& tOption)
 {
-	// ÀÛ¾÷ ´ë»ó°ú °á°ú Àü´Ş º¯¼ö »ı¼º - ÀÛ¾÷ ¸ñ·ÏÀ¸·Î °ü¸®
-	// pState´Â ½º·¹µå·Î ±¸µ¿µÇ´Â ÀÛ¾÷ÇÔ¼ö·Î Àü´ŞµÇ°í ÀÔ·Â ÀÌ¹ÌÁö ÆÄÀÏÀÌ¸§, Ãâ·Â ÀÌ¹ÌÁö ÆÄÀÏÀÌ¸§À» ÀÛ¾÷ ÇÔ¼ö·Î Àü´Ş
-	// ÀÛ¾÷ÀÌ ³¡³ª¸é ÀÛ¾÷ ÇÔ¼ö¿¡¼­ pState¿¡ °á°ú ÀúÀå
-	// shared ptr·Î »ı¼º - ui, thread ¾çÂÊ¿¡¼­ ¼ÒÀ¯
-	// ÀÛ¾÷ ³¡³ª¸é ui ÂÊ¿¡¼­ °á°ú¸¦ °¡Á®¿Ã ¼ö ÀÖµµ·Ï Ã³¸®, ¾çÂÊ ÂüÁ¶ ³¡³ª¸é ¸Ş¸ğ¸® ÀÚµ¿ ÇØÁ¦
+	switch (m_imgProcInputMode)
+	{
+	default:
+	case EImgProcInputMode::FileName:
+		// ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„ìœ¼ë¡œ ì…ì¶œë ¥ ì²˜ë¦¬
+		return ProcessImageByFileName(csInputFileName, csOutputFileName, tOption);
+
+	case EImgProcInputMode::MatRaw:
+		// cv::Matë¡œ ì…ì¶œë ¥ ì²˜ë¦¬  
+		return ProcessImageByMatRaw(csInputFileName, csOutputFileName, tOption);
+
+	case EImgProcInputMode::EncodedImage:
+		// ì¸ì½”ë”©ëœ ì´ë¯¸ì§€ íŒŒì¼ ë°ì´í„°ë¡œ ì…ì¶œë ¥ ì²˜ë¦¬
+		return ProcessImageByEncodedData(csInputFileName, csOutputFileName, tOption);
+	}
+}
+
+int CImgProcAmpDlg::ProcessImageByFileName(const std::string& csInputFileName,
+	const std::string& csOutputFileName,
+	const TImgProcOption& tOption)
+{
+	try
+	{
+		// dll í˜¸ì¶œí•¨ìˆ˜ ë¡œë“œ ì ê²€
+		if (m_imgProcDll.ProcessFileImg == nullptr) return -100;
+
+		return m_imgProcDll.ProcessFileImg(csInputFileName.c_str(), csOutputFileName.c_str(), tOption);
+	}
+	catch (...)
+	{
+		std::cerr << "process image by file name unknown error\n";
+		return -107;
+	}
+}
+
+int CImgProcAmpDlg::ProcessImageByMatRaw(const std::string& csInputFileName,
+	const std::string& csOutputFileName,
+	const TImgProcOption& tOption)
+{
+	// dll í˜¸ì¶œí•¨ìˆ˜ ë¡œë“œ ì ê²€
+	if (m_imgProcDll.ProcessMatRawImg == nullptr ||
+		m_imgProcDll.GetProcessedMatRawImg == nullptr ||
+		m_imgProcDll.ReleaseResult == nullptr)
+	{
+		return -101;
+	}
+
+	try
+	{
+		// ì´ë¯¸ì§€ë¥¼ cv::Mat í˜•íƒœë¡œ ë¡œë“œ - ì…ë ¥ ì´ë¯¸ì§€
+		const cv::Mat matInput = cv::imread(csInputFileName, cv::IMREAD_COLOR);
+		if (matInput.empty())
+		{
+			return -102;
+		}
+
+		// ì²˜ë¦¬ ê²°ê³¼ë¥¼ ë°›ê¸° ìœ„í•œ í•¸ë“¤
+		ImageResultHandle rawHandle = nullptr;
+		
+		// cv::Matë¥¼ ì›ì‹œ ë°ì´í„° í˜•íƒœë¡œ dllë¡œ ì „ë‹¬ - opencv ê°ì²´ ì§ì ‘ ì „ë‹¬ ìœ„í—˜ ë°©ì§€
+		const int processResult = m_imgProcDll.ProcessMatRawImg(
+			matInput.data,
+			matInput.cols,
+			matInput.rows,
+			matInput.type(),
+			matInput.step,
+			tOption,
+			&rawHandle);
+
+		if (processResult != 0)
+		{
+			return processResult;
+		}
+		if (rawHandle == nullptr)
+		{
+			return -103;
+		}
+
+		// ì²˜ë¦¬ ê²°ê³¼ í•¸ë“¤ì„ ì´ìš©í•´ì„œ ê²°ê³¼ ì´ë¯¸ì§€ ë°ì´í„° ë°›ì•„ì˜´ - í• ë‹¹ë˜ì—ˆë˜ ë©”ëª¨ë¦¬ëŠ” ìë™ í•´ì œ
+		auto result = MakeImgProcDllResultPtr(m_imgProcDll, rawHandle);
+		TImgRetInfo retInfo;
+		m_imgProcDll.GetProcessedMatRawImg(result.get(), &retInfo);
+		if (retInfo.data == nullptr || retInfo.width <= 0 ||
+			retInfo.height <= 0 || retInfo.type < 0)
+		{
+			return -104;
+		}
+
+		// ë°›ì•„ì˜¨ ê²°ê³¼ ë°ì´í„°ë¥¼ ì´ìš©í•´ì„œ cv::Mat êµ¬ì„±
+		const cv::Mat matOutput(
+			retInfo.height,
+			retInfo.width,
+			retInfo.type,
+			const_cast<unsigned char*>(retInfo.data));
+
+		// ì²˜ë¦¬ ê²°ê³¼ë¥¼ ì´ë¯¸ì§€ íŒŒì¼ë¡œ ì €ì¥
+		return cv::imwrite(csOutputFileName, matOutput) ? 0 : -105;
+	}
+	catch (const cv::Exception& e)
+	{
+		std::cerr << "ProcessMatRawImg path exception=" << e.what() << std::endl;
+		return -106;
+	}
+}
+
+int CImgProcAmpDlg::ProcessImageByEncodedData(const std::string& csInputFileName,
+	const std::string& csOutputFileName,
+	const TImgProcOption& tOption)
+{
+	// dll í˜¸ì¶œí•¨ìˆ˜ ë¡œë“œ ì ê²€
+	if (m_imgProcDll.ProcessEncodedImg == nullptr ||
+		m_imgProcDll.GetProcessedMatRawImg == nullptr ||
+		m_imgProcDll.ReleaseResult == nullptr)
+	{
+		return -108;
+	}
+
+	try
+	{
+		int rt = 0;
+
+		// ì´ë¯¸ì§€ íŒŒì¼ ë°ì´í„° ë¡œë“œ
+		std::vector<unsigned char> encodedInput;
+		rt = ReadFileToVecBuf(csInputFileName, encodedInput);
+		if (rt != 0)
+		{
+			std::cerr << "process img by encoded data image file load fail=" << rt << "\n";
+			return -109;
+		}
+
+		// ì¶œë ¥ ì´ë¯¸ì§€ íŒŒì¼ í˜•ì‹ ì„¤ì • - ì…ë ¥ ì´ë¯¸ì§€ íŒŒì¼ í˜•ì‹ê³¼ ë™ì¼í•˜ë„ë¡ ì„¤ì •
+		std::string outputExtension = ToLowerString(fs::path(csOutputFileName).extension().string());
+		int outputEncodeType = FORMAT_JPG;
+		if (outputExtension == ".png") outputEncodeType = FORMAT_PNG;
+		else if (outputExtension == ".bmp") outputEncodeType = FORMAT_BMP;
+
+		// ì‘ì—… ê²°ê³¼ë¥¼ ê°€ì ¸ì˜¤ê¸° ìœ„í•œ í•¸ë“¤
+		ImageResultHandle rawHandle = nullptr;
+
+		// ì´ë¯¸ì§€ ì²˜ë¦¬
+		const int processResult = m_imgProcDll.ProcessEncodedImg(
+			encodedInput.data(),
+			encodedInput.size(),
+			tOption,
+			outputEncodeType,
+			&rawHandle);
+
+		if (processResult != 0)
+		{
+			return processResult;
+		}
+		if (rawHandle == nullptr)
+		{
+			return -112;
+		}
+
+		// ì‘ì—… ê²°ê³¼ ê°€ì ¸ì˜¤ê¸° - ì‘ì—… ê²°ê³¼ ì €ì¥ì„ ìœ„í•´ dllì—ì„œ í• ë‹¹ë˜ì—ˆë˜ ë©”ëª¨ë¦¬ëŠ” ìë™ í•´ì œ
+		auto result = MakeImgProcDllResultPtr(m_imgProcDll, rawHandle);
+		TImgRetInfo retInfo;
+		m_imgProcDll.GetProcessedMatRawImg(result.get(), &retInfo);
+		if (retInfo.data == nullptr || retInfo.dataSize == 0 || retInfo.dataType != 1)
+		{
+			return -113;
+		}
+
+		// ì´ë¯¸ì§€ ë°ì´í„° í˜•ì‹ìœ¼ë¡œ ì¸ì½”ë”© ë˜ì–´ ìˆëŠ” ì‘ì—… ê²°ê³¼ë¥¼ íŒŒì¼ë¡œ ì €ì¥
+		rt = WriteFileFromBuf(csOutputFileName, retInfo.data, retInfo.dataSize);
+		if (rt != 0)
+		{
+			std::cerr << "process img by encoded data image file write fail=" << rt << "\n";
+			return -114;
+		}
+
+		return 0;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "ProcessEncodedImg path exception=" << e.what() << std::endl;
+		return -116;
+	}
+}
+
+
+bool CImgProcAmpDlg::AddImgProcTask(const std::string& inputFileName,
+	const std::string& outputFileName,
+	const TImgProcOption& tOption)
+{
+	// ì‘ì—… ëŒ€ìƒê³¼ ê²°ê³¼ ì „ë‹¬ ë³€ìˆ˜ ìƒì„± - ì‘ì—… ëª©ë¡ìœ¼ë¡œ ê´€ë¦¬
+	// pStateëŠ” ìŠ¤ë ˆë“œë¡œ êµ¬ë™ë˜ëŠ” ì‘ì—…í•¨ìˆ˜ë¡œ ì „ë‹¬ë˜ê³  ì…ë ¥ ì´ë¯¸ì§€ íŒŒì¼ì´ë¦„, ì¶œë ¥ ì´ë¯¸ì§€ íŒŒì¼ì´ë¦„ì„ ì‘ì—… í•¨ìˆ˜ë¡œ ì „ë‹¬
+	// ì‘ì—…ì´ ëë‚˜ë©´ ì‘ì—… í•¨ìˆ˜ì—ì„œ pStateì— ê²°ê³¼ ì €ì¥
+	// shared ptrë¡œ ìƒì„± - ui, thread ì–‘ìª½ì—ì„œ ì†Œìœ 
+	// ì‘ì—… ëë‚˜ë©´ ui ìª½ì—ì„œ ê²°ê³¼ë¥¼ ê°€ì ¸ì˜¬ ìˆ˜ ìˆë„ë¡ ì²˜ë¦¬, ì–‘ìª½ ì°¸ì¡° ëë‚˜ë©´ ë©”ëª¨ë¦¬ ìë™ í•´ì œ
 	auto pState = std::make_shared<TImgProcTaskState>();
 
-	pState->csInputFileName = csInputFileName;   // ¿øº» ÀÌ¹ÌÁö ÆÄÀÏ ÀÌ¸§
-	pState->csOutputFileName = csOutputFileName; // °á°ú ÀÌ¹ÌÁö ÆÄÀÏ ÀÌ¸§
+	pState->inputFileName = inputFileName;   // ì›ë³¸ ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„
+	pState->outputFileName = outputFileName; // ê²°ê³¼ ì´ë¯¸ì§€ íŒŒì¼ ì´ë¦„
 
-	// ½º·¹µå Ç® ÀÛ¾÷ Å¥¿¡ ÀÛ¾÷ Ãß°¡
+	// ìŠ¤ë ˆë“œ í’€ ì‘ì—… íì— ì‘ì—… ì¶”ê°€
 	const std::uint32_t nTaskId = m_threadProc.AddTask(
-		std::bind(
-			&CImgProcAmpDlg::ProcessImgProcTask,
-			this,
-			pState,
-			tOption,
-			std::placeholders::_1));
-	
+		[this, pState, tOption](const std::atomic<bool>& stopRequested)
+		{
+			return ProcessImgProcTask(pState, tOption, stopRequested);
+		}
+	);
+		
 	if (nTaskId == 0)
 	{
-		// ½º·¹µåÇ®ÀÌ ½ÇÇà ÁßÀÌ ¾Æ´Ï°Å³ª Å¥°¡ ¸ğµÎ Ã¤¿öÁø °æ¿ì
+		// íê°€ ê°€ë“ ì°¬ ê²½ìš°ì—ëŠ” ë‚´ë¶€ì—ì„œ ë¹ˆìë¦¬ê°€ ìƒê¸¸ ë•Œê¹Œì§€ ëŒ€ê¸°í•˜ë¯€ë¡œ,
+		// ì—¬ê¸°ì„œëŠ” ìŠ¤ë ˆë“œ í’€ì´ ì¤‘ì§€ë˜ì—ˆê±°ë‚˜ ì‹¤í–‰ ì¤‘ì´ ì•„ë‹Œ ê²½ìš°ì—ë§Œ ë“±ë¡ ì‹¤íŒ¨
 		return false;
 	}
 
-	// ÀÛ¾÷ id¸¦ Å°·Î ÁöÁ¤ÇØ¼­ ÀÛ¾÷ °ü¸® ¸ñ·Ï¿¡ Ãß°¡
-	m_mapImgProcTasks.emplace(nTaskId, std::move(pState));
+	{
+		// ë“±ë¡ ì „ìš© ìŠ¤ë ˆë“œì™€ UIì˜ ì™„ë£Œ ë©”ì‹œì§€ ì²˜ë¦¬ í•¨ìˆ˜ê°€ mapì„ ë™ì‹œì— ì ‘ê·¼í•˜ì§€ ì•Šë„ë¡ ë³´í˜¸
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		m_mapImgProcTasks.emplace(nTaskId, pState);
+	}
+	m_nImgTaskEnqueued.fetch_add(1);
+
+	{
+		// mapê³¼ ì‘ì—… ìˆ˜ëŸ‰ ë“±ë¡ì´ ëë‚¬ìŒì„ ì›Œì»¤ì— ì•Œë¦° ë’¤ ì‹¤ì œ ì´ë¯¸ì§€ ì²˜ë¦¬ë¥¼ ì§„í–‰ì‹œí‚´
+		std::lock_guard<std::mutex> lock(pState->mutex);
+		pState->bEnqueueRegistered = true;
+	}
+	pState->enqueueCondition.notify_one();
 
 	return true;
 }
 
-// ½º·¹µå Ç®¿¡ ÇÒ´çµÈ ÀÛ¾÷ÀÌ ³¡³µ´ÂÁö °Ë»ç
+// ìŠ¤ë ˆë“œ í’€ì— í• ë‹¹ëœ ì‘ì—…ì´ ëë‚¬ëŠ”ì§€ ê²€ì‚¬
 void CImgProcAmpDlg::CheckImgProcBatchCompleted()
 {
 	if (!m_bImgBatchRunning) return;
 
-	// ÀÛ¾÷ µî·Ï ÁßÀÌ¸é ¿Ï·á ¾Æ´Ô
-	if (!m_bImgTaskSubmissionCompleted) return;
+	// ì‘ì—… í ë“±ë¡ ì¤‘ì´ë©´ ì™„ë£Œ ì•„ë‹˜
+	if (!m_bImgTaskEnqueueCompleted.load()) return;
 
-	// ¿Ï·á ¸Ş½ÃÁö¸¦ ¹ŞÁö ¾ÊÀº ÀÛ¾÷ÀÌ ÀÖÀ¸¸é ¿Ï·á ¾Æ´Ô
-	if (m_nImgTaskFinished != m_nImgTaskSubmitted) return;
+	// ì™„ë£Œ ë©”ì‹œì§€ë¥¼ ë°›ì§€ ì•Šì€ ì‘ì—…ì´ ìˆìœ¼ë©´ ì™„ë£Œ ì•„ë‹˜
+	if (m_nImgTaskFinished.load() != m_nImgTaskEnqueued.load()) return;
 
-	// ÀÛ¾÷ id°¡ ³²¾ÆÀÖ´ÂÁö È®ÀÎ
-	if (!m_mapImgProcTasks.empty()) return;
+	{
+		// ë“±ë¡ ìŠ¤ë ˆë“œê°€ mapì— ì‘ì—…ì„ ì¶”ê°€í•  ìˆ˜ ìˆìœ¼ë¯€ë¡œ ëª©ë¡ í™•ì¸ë„ mutexë¡œ ë³´í˜¸
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		if (!m_mapImgProcTasks.empty()) return;
+	}
 
 	m_bImgBatchRunning = false;
 	OnImgProcTasksCompletedAll();
@@ -816,35 +1106,41 @@ void CImgProcAmpDlg::CheckImgProcBatchCompleted()
 void CImgProcAmpDlg::OnImgProcTasksCompletedAll()
 {
 	ClosePrepareNotice();
-	// ½º·¹µå Ç® ÀÛ¾÷ÀÌ ¸ğµÎ ³¡³ª¸é ½º·¹µå Ç® Á¾·á
+	// ìŠ¤ë ˆë“œ í’€ ì‘ì—…ì´ ëª¨ë‘ ëë‚˜ë©´ ìŠ¤ë ˆë“œ í’€ ì¢…ë£Œ
 	m_threadProc.Stop();
 
-	// ½º·¹µå Ç® ÀÛ¾÷ÀÌ ¸ğµÎ ³¡³ª¸é ÀÛ¾÷½Ã°£ °è»ê
+	// ìŠ¤ë ˆë“œ í’€ ì‘ì—…ì´ ëª¨ë‘ ëë‚˜ë©´ ì‘ì—…ì‹œê°„ ê³„ì‚°
 	m_endTm = std::chrono::steady_clock::now();
 	double ms = std::chrono::duration<double, std::milli>(m_endTm - m_startTm).count();
 	
-	// ·Î±× ±¸¼º
+	// ë¡œê·¸ êµ¬ì„±
 	m_ossLogAll << MakeLog(ms);
 
-	// ui Ã³¸®
+	// ui ì²˜ë¦¬
 	m_ctrlPrgsWork.SetPos(100);
 	SetCtrlStatus(WorkStatus::ImgProcEnd);
 
-	// ÀÛ¾÷ °á°ú ÆÄÀÏÀ» ÀÌ¹ÌÁö ¸®½ºÆ®¿¡ ¼³Á¤
+	// ì‘ì—… ê²°ê³¼ íŒŒì¼ì„ ì´ë¯¸ì§€ ë¦¬ìŠ¤íŠ¸ì— ì„¤ì •
 	ListFile(m_dstPath, DISP_IMG_LIST_DST);
 
-	// ·Î±× Ã¢¿¡ ·Î±× Ç¥½Ã
+	// ë¡œê·¸ ì°½ì— ë¡œê·¸ í‘œì‹œ
 	PostMessage(UM_EDIT_LOG_SET_TEXT, 0, NULL);
 }
 
 void CImgProcAmpDlg::StartImageBatchThreadPool()
 {
-	m_mapImgProcTasks.clear();
+	// ì´ì „ ë°°ì¹˜ì˜ ë“±ë¡ ìŠ¤ë ˆë“œ í•¸ë“¤ì´ ë‚¨ì•„ ìˆìœ¼ë©´ ìƒˆ ë“±ë¡ ìŠ¤ë ˆë“œë¥¼ ë§Œë“¤ê¸° ì „ì— ì •ë¦¬
+	JoinImageTaskEnqueueThread();
+	{
+		std::lock_guard<std::mutex> lock(m_imgProcTaskMutex);
+		m_mapImgProcTasks.clear();
+	}
 
-	m_nImgTaskSubmitted = 0;
-	m_nImgTaskFinished = 0;
+	m_nImgTaskEnqueued.store(0);
+	m_nImgTaskFinished.store(0);
 
-	m_bImgTaskSubmissionCompleted = false;
+	m_imgTaskEnqueueStopRequested.store(false);
+	m_bImgTaskEnqueueCompleted.store(false);
 	m_bImgBatchRunning = true;
 		
 	TImgProcOption option;
@@ -852,7 +1148,7 @@ void CImgProcAmpDlg::StartImageBatchThreadPool()
 	option.nMaxWidth = 1600;
 	option.nMaxHeight = 1600;
 
-	option.dGamma = 0.0; // ÀÚµ¿ °¨¸¶
+	option.dGamma = 0.0; // ìë™ ê°ë§ˆ
 	option.dClaheClipLimit = 2.0;
 	option.dSharpenAmount = 1.0;
 
@@ -864,15 +1160,15 @@ void CImgProcAmpDlg::StartImageBatchThreadPool()
 		std::string dstImg = "";
 		for (const std::string& srcImg : m_vSrcImgFileList)
 		{
-			inoutFile.pszInput = srcImg.c_str();
+			inoutFile.input = srcImg.c_str();
 
 			dstImg = m_dstPath + "/" + pathObj.assign(srcImg).stem().string() + "_proc.jpg";
-			inoutFile.pszOutput = dstImg.c_str();
+			inoutFile.output = dstImg.c_str();
 
 			vInOutFileList.push_back(inoutFile);
 
-			std::cout << "input=" << vInOutFileList.back().pszInput << std::endl;
-			std::cout << "output=" << vInOutFileList.back().pszOutput << "\n" <<std::endl;
+			std::cout << "input=" << vInOutFileList.back().input << std::endl;
+			std::cout << "output=" << vInOutFileList.back().output << "\n" <<std::endl;
 		}	
 	}
 	else
@@ -880,28 +1176,63 @@ void CImgProcAmpDlg::StartImageBatchThreadPool()
 		ClosePrepareNotice();
 		SetCtrlStatus(WorkStatus::WorkStop);
 		m_bImgBatchRunning = false;
-		AfxMessageBox(_T("Ã³¸®ÇÒ ¿øº» ÀÌ¹ÌÁö°¡ ¾ø½À´Ï´Ù."));
+		AfxMessageBox(_T("ì²˜ë¦¬í•  ì›ë³¸ ì´ë¯¸ì§€ê°€ ì—†ìŠµë‹ˆë‹¤."));
 		return;
 	}
 
+	try
+	{
+		// ì‘ì—… íê°€ ê°€ë“ ì°¨ë„ UI ìŠ¤ë ˆë“œëŠ” ëŒ€ê¸°í•˜ì§€ ì•Šë„ë¡ ë“±ë¡ ì‘ì—…ë§Œ ë³„ë„ ì‹±ê¸€ ìŠ¤ë ˆë“œì—ì„œ ì‹¤í–‰
+		m_imgTaskEnqueueThread = std::thread(
+			&CImgProcAmpDlg::EnqueueImageTasks,
+			this,
+			std::move(vInOutFileList),
+			option);
+	}
+	catch (...)
+	{
+		m_bImgBatchRunning = false;
+		m_bImgTaskEnqueueCompleted = true;
+
+		// ë“±ë¡ ìŠ¤ë ˆë“œë¥¼ ë§Œë“¤ì§€ ëª»í•œ ê²½ìš° ì´ë¯¸ ì‹œì‘ëœ ìŠ¤ë ˆë“œ í’€ë„ í•¨ê»˜ ì •ë¦¬
+		m_threadProc.Stop(true, true);
+		ClosePrepareNotice();
+		SetCtrlStatus(WorkStatus::WorkStop);
+		AfxMessageBox(_T("ì´ë¯¸ì§€ ì‘ì—… ë“±ë¡ ìŠ¤ë ˆë“œë¥¼ ì‹œì‘í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤."));
+	}
+}
+
+
+void CImgProcAmpDlg::EnqueueImageTasks(std::vector<TImgProcFile> vInOutFileList, TImgProcOption option)
+{
 	for (const auto& file : vInOutFileList)
 	{
-		if (!AddImgProcTask(file.pszInput, file.pszOutput, option))
+		if (m_imgTaskEnqueueStopRequested.load()) break;
+
+		// íê°€ ê°€ë“ ì°¨ë©´ AddImgProcTask ë‚´ë¶€ì—ì„œ ë¹ˆìë¦¬ê°€ ìƒê¸¸ ë•Œê¹Œì§€ ì´ ë“±ë¡ ìŠ¤ë ˆë“œë§Œ ëŒ€ê¸°
+		if (!AddImgProcTask(file.input, file.output, option))
 		{
-			std::cerr << "ÀÛ¾÷ µî·Ï ½ÇÆĞ: "<< file.pszInput << "\n";
+			if (!m_imgTaskEnqueueStopRequested.load())
+				std::cerr << "ì‘ì—… í ë“±ë¡ ì‹¤íŒ¨: " << file.input << "\n";
+			break;
 		}
-		else
-		{
-			++m_nImgTaskSubmitted;
-			std::cout << "img proc task added" << std::endl;
-		}
+
+		std::cout << "img proc task enqueued" << std::endl;
 	}
 
-	// ÀÌ ½ÃÁ¡ ÀÌÈÄ¿¡´Â ÀÌ ¹èÄ¡¿¡ ÀÛ¾÷À» µî·ÏÇÏÁö ¾ÊÀ½
-	m_bImgTaskSubmissionCompleted = true;
+	// ë“±ë¡ ì™„ë£Œ í›„ì˜ ë°°ì¹˜ ì™„ë£Œ íŒë‹¨ê³¼ UI ì²˜ë¦¬ëŠ” ë°˜ë“œì‹œ UI ìŠ¤ë ˆë“œì—ì„œ ìˆ˜í–‰
+	PostMessage(UM_IMG_TASK_ENQUEUE_COMPLETED, 0, 0);
+}
 
-	// ÀÌ¹ÌÁö°¡ ¾ø°Å³ª ¸ğµç µî·ÏÀÌ ½ÇÆĞÇÑ °æ¿ì È®ÀÎ
-	CheckImgProcBatchCompleted();
+
+void CImgProcAmpDlg::JoinImageTaskEnqueueThread()
+{
+	// ë“±ë¡ ìŠ¤ë ˆë“œë¥¼ detachí•˜ì§€ ì•Šê³  ì†Œìœ í•˜ì—¬ ë‹¤ì´ì–¼ë¡œê·¸ ì¢…ë£Œ ì „ì— ì•ˆì „í•˜ê²Œ íšŒìˆ˜
+	if (m_imgTaskEnqueueThread.joinable() &&
+		m_imgTaskEnqueueThread.get_id() != std::this_thread::get_id())
+	{
+		m_imgTaskEnqueueThread.join();
+	}
 }
 
 
@@ -912,7 +1243,7 @@ void CImgProcAmpDlg::StartImageBatchThreadSingle()
 	option.nMaxWidth = 1600;
 	option.nMaxHeight = 1600;
 
-	option.dGamma = 0.0; // ÀÚµ¿ °¨¸¶
+	option.dGamma = 0.0; // ìë™ ê°ë§ˆ
 	option.dClaheClipLimit = 2.0;
 	option.dSharpenAmount = 1.0;
 
@@ -924,15 +1255,15 @@ void CImgProcAmpDlg::StartImageBatchThreadSingle()
 		std::string dstImg = "";
 		for (const std::string& srcImg : m_vSrcImgFileList)
 		{
-			inoutFile.pszInput = srcImg.c_str();
+			inoutFile.input = srcImg.c_str();
 
 			dstImg = m_dstPath + "/" + pathObj.assign(srcImg).stem().string() + "_proc.jpg";
-			inoutFile.pszOutput = dstImg.c_str();
+			inoutFile.output = dstImg.c_str();
 
 			vInOutFileList.push_back(inoutFile);
 
-			std::cout << "input=" << vInOutFileList.back().pszInput << std::endl;
-			std::cout << "output=" << vInOutFileList.back().pszOutput << "\n" << std::endl;
+			std::cout << "input=" << vInOutFileList.back().input << std::endl;
+			std::cout << "output=" << vInOutFileList.back().output << "\n" << std::endl;
 		}
 	}
 	else
@@ -940,23 +1271,22 @@ void CImgProcAmpDlg::StartImageBatchThreadSingle()
 		ClosePrepareNotice();
 		SetCtrlStatus(WorkStatus::WorkStop);
 		m_bImgBatchRunning = false;
-		AfxMessageBox(_T("Ã³¸®ÇÒ ¿øº» ÀÌ¹ÌÁö°¡ ¾ø½À´Ï´Ù."));
+		AfxMessageBox(_T("ì²˜ë¦¬í•  ì›ë³¸ ì´ë¯¸ì§€ê°€ ì—†ìŠµë‹ˆë‹¤."));
 		return;
 	}
 
 	m_taskImgBatchSingleThread = m_threadProc.StartSingleTask(
-		std::bind(
-			&CImgProcAmpDlg::ImageBatchThreadSingle,
-			this,
-			vInOutFileList,
-			option,
-			std::placeholders::_1));
+		[this, vInOutFileList, option](const std::atomic<bool>& stopRequested)
+		{
+			return ImageBatchThreadSingle(vInOutFileList, option, stopRequested);
+		}
+	);
 
 	if (m_taskImgBatchSingleThread == 0)
 	{
 		ClosePrepareNotice();
 		SetCtrlStatus(WorkStatus::WorkStop);
-		AfxMessageBox(_T("½Ì±Û ÀÛ¾÷À» ½ÃÀÛÇÏÁö ¸øÇß½À´Ï´Ù."));
+		AfxMessageBox(_T("ì‹±ê¸€ ì‘ì—…ì„ ì‹œì‘í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤."));
 	}
 }
 
@@ -964,10 +1294,7 @@ int CImgProcAmpDlg::ImageBatchThreadSingle(std::vector<TImgProcFile> vInOutFileL
 	TImgProcOption option, 
 	const std::atomic<bool>& stopRequest)
 {
-	CImgProc imgProc;
-	TImgProcResult result;
-
-	m_nImgTaskFinished = 0;
+	m_nImgTaskFinished.store(0);
 
 	for (const TImgProcFile& inoutFile : vInOutFileList)
 	{
@@ -977,13 +1304,18 @@ int CImgProcAmpDlg::ImageBatchThreadSingle(std::vector<TImgProcFile> vInOutFileL
 			break;
 		}
 
-		imgProc.ProcessAndSave(inoutFile.pszInput, inoutFile.pszOutput, result, option);
+		const int processResult = ProcessImageFile(inoutFile.input, inoutFile.output, option);
+		if (processResult != 0)
+		{
+			std::cerr << "ImgProc.dll image processing failed=" << processResult << std::endl;
+			return IMG_PROC_FAILED;
+		}
 		std::cout << "image batch thread process image" << std::endl;
 
-		++m_nImgTaskFinished;
+		const std::size_t finishedCount = m_nImgTaskFinished.fetch_add(1) + 1;
 
-		// ui µ¿ÀÛ - ÇÁ·Î±×·¡½º¹Ù
-		PostMessage(UM_PROGRESS_SET_POS, (WPARAM)m_nImgTaskFinished, NULL);
+		// ui ë™ì‘ - í”„ë¡œê·¸ë˜ìŠ¤ë°”
+		PostMessage(UM_PROGRESS_SET_POS, static_cast<WPARAM>(finishedCount), NULL);
 	}
 
 	if (stopRequest == true) return -1;
@@ -992,24 +1324,40 @@ int CImgProcAmpDlg::ImageBatchThreadSingle(std::vector<TImgProcFile> vInOutFileL
 
 std::string CImgProcAmpDlg::MakeLog(const double workTime)
 {
-	// ·Î±× ±¸¼º
+	// ë¡œê·¸ êµ¬ì„±
 	std::string workName = "";
-	if (m_workMode == WorkMode::Sequencial) workName = "½Ì±Û ½º·¹µå ÀÛ¾÷ Á¾·á";
-	else workName = "½º·¹µå Ç® ÀÛ¾÷ Á¾·á";
+	if (m_workMode == WorkMode::Sequencial) workName = "ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—… ì¢…ë£Œ";
+	else workName = "ìŠ¤ë ˆë“œ í’€ ì‘ì—… ì¢…ë£Œ";
 
 	std::string opencvThreadUse = "";
-	if (m_opencvTh == 1) opencvThreadUse = "»ç¿ë";
-	else opencvThreadUse = "»ç¿ë »ç¿ë¾ÈÇÔ";
+	if (m_opencvTh == 1) opencvThreadUse = "ì‚¬ìš©";
+	else opencvThreadUse = "ì‚¬ìš©ì•ˆí•¨";
+
+	std::string dllInputMode;
+	switch (m_imgProcInputMode)
+	{
+	default:
+	case EImgProcInputMode::FileName:
+		dllInputMode = "ProcessFileImg";
+		break;
+	case EImgProcInputMode::MatRaw:
+		dllInputMode = "ProcessMatRawImg";
+		break;
+	case EImgProcInputMode::EncodedImage:
+		dllInputMode = "ProcessEncodedImg";
+		break;
+	}
 
 	std::ostringstream ossLog;
 	ossLog << "[" << GetCurrentDateTime(true) << "] " << workName <<"\r\n";
-	ossLog << "ÀÛ¾÷ ÀÌ¹ÌÁö ¼ö·® : " << m_nImgTaskFinished << "°³" << "\r\n";
+	ossLog << "ì‘ì—… ì´ë¯¸ì§€ ìˆ˜ëŸ‰ : " << m_nImgTaskFinished.load() << "ê°œ" << "\r\n";
 
 	if (m_workMode == WorkMode::ThreadPool) 
-		ossLog << "½º·¹µå °³¼ö : " << m_workThreadNum << "°³" << "\r\n";
+		ossLog << "ìŠ¤ë ˆë“œ ê°œìˆ˜ : " << m_workThreadNum << "ê°œ" << "\r\n";
 
-	ossLog << "OpenCV ³»ºÎ ½º·¹µå : " << opencvThreadUse << "\r\n";
-	ossLog << "ÀÛ¾÷ ½Ã°£ : " << workTime << " ms" << "\r\n";
+	ossLog << "OpenCV ë‚´ë¶€ ìŠ¤ë ˆë“œ : " << opencvThreadUse << "\r\n";
+	ossLog << "DLL ì…ë ¥ ë°©ì‹ : " << dllInputMode << "\r\n";
+	ossLog << "ì‘ì—… ì‹œê°„ : " << workTime << " ms" << "\r\n";
 	
 	ossLog << "---------------------------------------------------------" << "\r\n";
 	
@@ -1020,7 +1368,7 @@ std::string CImgProcAmpDlg::MakeLog(const double workTime)
 
 void CImgProcAmpDlg::SetThreadNumOption(CComboBox& ctrlComboBox)
 {
-	// ½Ã½ºÅÛ ½º·¹µå ¼ö ÆÄ¾Ç
+	// ì‹œìŠ¤í…œ ìŠ¤ë ˆë“œ ìˆ˜ íŒŒì•…
 	unsigned int supportThreadNum = std::thread::hardware_concurrency();
 	if (supportThreadNum == 0) supportThreadNum = 4;
 
@@ -1033,7 +1381,7 @@ void CImgProcAmpDlg::SetThreadNumOption(CComboBox& ctrlComboBox)
 	for (int i = 0; i < (int)std::size(weight); i++)
 	{
 		workThreadNum = (unsigned int)(supportThreadNum * weight[i]);
-		snprintf(cmbText, sizeof(cmbText), "%d (CPU Áö¿ø ½º·¹µå ¼ö X %.1f)", workThreadNum, weight[i]);
+		snprintf(cmbText, sizeof(cmbText), "%d (CPU ì§€ì› ìŠ¤ë ˆë“œ ìˆ˜ X %.1f)", workThreadNum, weight[i]);
 		ctrlComboBox.AddString(cmbText);
 		m_vWorkThreadNum.push_back(workThreadNum);
 	}
@@ -1050,29 +1398,29 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 	
 	if (nTaskId == m_taskImgFileListSrc)
 	{
-		// ¿øº» ÀÌ¹ÌÁö ¸ñ·Ï ¸¸µé±â ÀÛ¾÷ÀÌ ³¡³­ °æ¿ì
+		// ì›ë³¸ ì´ë¯¸ì§€ ëª©ë¡ ë§Œë“¤ê¸° ì‘ì—…ì´ ëë‚œ ê²½ìš°
 		m_taskImgFileListSrc = 0;
 
 		if (nResult != 0)
 		{
 			ClosePrepareNotice();
 			SetCtrlStatus(WorkStatus::WorkStop);
-			AfxMessageBox(_T("ÀÌ¹ÌÁö ¸ñ·Ï °Ë»ö¿¡ ½ÇÆĞÇß½À´Ï´Ù."));
+			AfxMessageBox(_T("ì´ë¯¸ì§€ ëª©ë¡ ê²€ìƒ‰ì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤."));
 			return 0;
 		}
 
-		// È­¸é¿¡ ¿øº» ÀÌ¹ÌÁö Ç¥½Ã
+		// í™”ë©´ì— ì›ë³¸ ì´ë¯¸ì§€ í‘œì‹œ
 		m_ctrlPrgsWork.SetPos(100);
 		m_pImgListSrc->Invalidate(FALSE);
 
 		//----------------------------------------
-		// ÈÄ¼ÓÀÛ¾÷ ÁøÇà - ÀÌ¹ÌÁö Ã³¸® ÀÛ¾÷
+		// í›„ì†ì‘ì—… ì§„í–‰ - ì´ë¯¸ì§€ ì²˜ë¦¬ ì‘ì—…
 
-		// ÀÛ¾÷ ¸ğµå ¼³Á¤ - ½Ì±Û ½º·¹µå, ½º·¹µå Ç®
+		// ì‘ì—… ëª¨ë“œ ì„¤ì • - ì‹±ê¸€ ìŠ¤ë ˆë“œ, ìŠ¤ë ˆë“œ í’€
 		if (m_ctrlRdoSeq.GetCheck() == 1) m_workMode = WorkMode::Sequencial;
 		else m_workMode = WorkMode::ThreadPool;
 
-		// opencv ³»ºÎ ½º·¹µå ¼ö ¼³Á¤
+		// opencv ë‚´ë¶€ ìŠ¤ë ˆë“œ ìˆ˜ ì„¤ì •
 		if (m_ctrlChkOpencvTh.GetCheck() == 0) cv::setNumThreads(1);
 		else  cv::setNumThreads(0);
 
@@ -1081,19 +1429,19 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 
 		if (m_workMode == WorkMode::Sequencial)
 		{
-			// ½Ì±Û ½º·¹µå·Î ÀÌ¹ÌÁö Ã³¸®ÀÛ¾÷ ½ÃÀÛ
+			// ì‹±ê¸€ ìŠ¤ë ˆë“œë¡œ ì´ë¯¸ì§€ ì²˜ë¦¬ì‘ì—… ì‹œì‘
 			m_startTm = std::chrono::steady_clock::now();
 			StartImageBatchThreadSingle();
 		}
 		else
 		{
-			// ½º·¹µå Ç®¿¡¼­ »ç¿ëÇÒ ½º·¹µå °³¼ö ¼³Á¤
+			// ìŠ¤ë ˆë“œ í’€ì—ì„œ ì‚¬ìš©í•  ìŠ¤ë ˆë“œ ê°œìˆ˜ ì„¤ì •
 			m_workThreadNum = m_vWorkThreadNum[m_ctrlCmbThrSet.GetCurSel()];
 
 			//if (m_ctrlCmbThrSet.GetCurSel() == 0) m_workThreadNum = m_sysThreadNum - 1;
 			//else m_workThreadNum = m_sysThreadNum / 2;
 
-			// ±âÁ¸¿¡ ¼³Á¤µÇ¾îÀÖ´Â ½º·¹µå ¼ö·®°ú ´Ù¸£¸é »õ·Î¿î °ªÀ¸·Î ¼³Á¤
+			// ê¸°ì¡´ì— ì„¤ì •ë˜ì–´ìˆëŠ” ìŠ¤ë ˆë“œ ìˆ˜ëŸ‰ê³¼ ë‹¤ë¥´ë©´ ìƒˆë¡œìš´ ê°’ìœ¼ë¡œ ì„¤ì •
 			if (m_threadProc.GetThreadCount() != m_workThreadNum)
 			{
 				m_threadProc.Stop();
@@ -1108,20 +1456,20 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 				{
 					ClosePrepareNotice();
 					SetCtrlStatus(WorkStatus::WorkStop);
-					AfxMessageBox(_T("ÀÌ¹ÌÁö Ã³¸® ½º·¹µåÇ®À» ½ÃÀÛÇÏÁö ¸øÇß½À´Ï´Ù."));
+					AfxMessageBox(_T("ì´ë¯¸ì§€ ì²˜ë¦¬ ìŠ¤ë ˆë“œí’€ì„ ì‹œì‘í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤."));
 					return 0;
 				}
 			}
 
-			// ½º·¹µå Ç®·Î ÀÌ¹ÌÁö Ã³¸®ÀÛ¾÷ ½ÃÀÛ
+			// ìŠ¤ë ˆë“œ í’€ë¡œ ì´ë¯¸ì§€ ì²˜ë¦¬ì‘ì—… ì‹œì‘
 			m_startTm = std::chrono::steady_clock::now();
 			StartImageBatchThreadPool();
 		}
 	}
 	else if (nTaskId == m_taskImgFileListDst)
 	{
-		// ÀÌ¹ÌÁö Ã³¸®°¡ ³¡³ª°í °á°ú ÀÌ¹ÌÁö ¸ñ·Ï ¸¸µé±â ÀÛ¾÷ÀÌ ³¡³­ °æ¿ì
-		// ÇÁ·Î±×·¡½º¹Ù·Î ÀÛ¾÷ ³¡³²À» ¾Ë¸®°í °á°ú ÀÌ¹ÌÁö¸¦ È­¸é¿¡ Ç¥½Ã
+		// ì´ë¯¸ì§€ ì²˜ë¦¬ê°€ ëë‚˜ê³  ê²°ê³¼ ì´ë¯¸ì§€ ëª©ë¡ ë§Œë“¤ê¸° ì‘ì—…ì´ ëë‚œ ê²½ìš°
+		// í”„ë¡œê·¸ë˜ìŠ¤ë°”ë¡œ ì‘ì—… ëë‚¨ì„ ì•Œë¦¬ê³  ê²°ê³¼ ì´ë¯¸ì§€ë¥¼ í™”ë©´ì— í‘œì‹œ
 		int low = 0;
 		int high = 0;
 		m_ctrlPrgsWork.GetRange(low, high);
@@ -1130,17 +1478,17 @@ LRESULT CImgProcAmpDlg::OnSingleTaskCompleted(WPARAM wParam, LPARAM lParam)
 	}
 	else if (nTaskId == m_taskImgBatchSingleThread)
 	{
-		// ½Ì±Û ½º·¹µå ÀÛ¾÷ÀÌ ³¡³ª¸é ÀÛ¾÷½Ã°£ °è»ê - ½º·¹µå Ç® ÀÛ¾÷ Á¾·á´Â OnImgProcTasksCompleteAll
+		// ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—…ì´ ëë‚˜ë©´ ì‘ì—…ì‹œê°„ ê³„ì‚° - ìŠ¤ë ˆë“œ í’€ ì‘ì—… ì¢…ë£ŒëŠ” OnImgProcTasksCompleteAll
 		m_endTm = std::chrono::steady_clock::now();
 		double ms = std::chrono::duration<double, std::milli>(m_endTm - m_startTm).count();
 
-		// ·Î±× ±¸¼º
+		// ë¡œê·¸ êµ¬ì„±
 		m_ossLogAll << MakeLog(ms);
 
-		// ÀÛ¾÷ °á°ú ÆÄÀÏÀ» ÀÌ¹ÌÁö ¸®½ºÆ®¿¡ ¼³Á¤
+		// ì‘ì—… ê²°ê³¼ íŒŒì¼ì„ ì´ë¯¸ì§€ ë¦¬ìŠ¤íŠ¸ì— ì„¤ì •
 		ListFile(m_dstPath, DISP_IMG_LIST_DST);
 
-		// ·Î±× Ã¢¿¡ ·Î±× Ç¥½Ã
+		// ë¡œê·¸ ì°½ì— ë¡œê·¸ í‘œì‹œ
 		PostMessage(UM_EDIT_LOG_SET_TEXT, 0, NULL);
 
 		SetCtrlStatus(WorkStatus::ImgProcEnd);
@@ -1157,7 +1505,7 @@ LRESULT CImgProcAmpDlg::OnSingleTaskStarted(WPARAM wParam, LPARAM lParam)
 {
 	if (m_taskImgBatchSingleThread != 0 && wParam == m_taskImgBatchSingleThread)
 		ClosePrepareNotice();
-	std::cout << "½Ì±Û ½º·¹µå ÀÛ¾÷ÀÌ ½ÃÀÛµÇ¾ú½À´Ï´Ù." << std::endl;
+	std::cout << "ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—…ì´ ì‹œì‘ë˜ì—ˆìŠµë‹ˆë‹¤." << std::endl;
 	return 0;
 }
 
@@ -1167,9 +1515,9 @@ LRESULT CImgProcAmpDlg::OnSingleTaskFailed(WPARAM wParam, LPARAM lParam)
 	{
 		ClosePrepareNotice();
 		SetCtrlStatus(WorkStatus::WorkStop);
-		AfxMessageBox(_T("ÀÛ¾÷À» ½ÇÇàÇÏÁö ¸øÇß½À´Ï´Ù."));
+		AfxMessageBox(_T("ì‘ì—…ì„ ì‹¤í–‰í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤."));
 	}
-	std::cout << "½Ì±Û ½º·¹µå ÀÛ¾÷ÀÌ ½ÇÆĞÇß½À´Ï´Ù." << std::endl;
+	std::cout << "ì‹±ê¸€ ìŠ¤ë ˆë“œ ì‘ì—…ì´ ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤." << std::endl;
 	return 0;
 }
 
