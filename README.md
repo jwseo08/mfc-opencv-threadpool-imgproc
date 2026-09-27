@@ -309,7 +309,7 @@ CPU가 지원하는 논리 프로세서 수보다 많은 워커 스레드를 사
 3. 상단 도구 모음에서 **솔루션 구성**을 `Release`로 설정합니다.
 4. **솔루션 플랫폼**을 `x64`로 설정합니다.
 5. **빌드 > 솔루션 빌드** 메뉴를 실행합니다.
-6. 빌드가 완료되면 `x64/Release` 폴더에 `ImgProcAmp.exe`가 생성됩니다.
+6. 빌드가 완료되면 `x64/Release` 폴더에 `ImgProc.dll`과 `ImgProcAmp.exe`가 생성됩니다.
 
 `x64/Release` 폴더에는 프로그램 실행 시 필요한 OpenCV DLL이 포함되어 있습니다.
 
@@ -343,12 +343,12 @@ Windows 11에서 **Smart App Control**이 활성화되어 있는 경우, 코드 
 * Windows MFC
 * OpenCV
 * C++ Standard Library
-  * `std::thread`
-  * `std::mutex`
-  * `std::condition_variable`
-  * `std::atomic`
-  * `std::function`
-  * `std::unique_ptr`
+  - `std::thread`
+  - `std::mutex`
+  - `std::condition_variable`
+  - `std::atomic`
+  - `std::function`
+  - `std::unique_ptr`
 * Windows Message
 * Thread Pool / Multi-threading
 
